@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# ---------------------------------------------------------------------------
+# CREDENTIALS NEVER GO IN THIS REPOSITORY.
+#
+# That is absolute, and it holds whether or not the repo is public --
+# git remembers everything, so a secret committed once is a secret burned, and
+# deleting it in a later commit does not remove it.
+#
+# Where credentials are allowed to live instead:
+#   - the agent's access token      -> agent/config.json, local only (below)
+#   - your Drobo share password     -> Windows Credential Manager, handed
+#                                      straight to Windows by the app. This
+#                                      project never writes it anywhere.
+#   - anything the Windows app saves -> %LOCALAPPDATA%\DroboDashboardReborn\
+# ---------------------------------------------------------------------------
+agent/config.json
+# Any other local config -- e.g. config.mock.json, the simulated Drobo used for
+# clicking through the UI without hardware. These generate their own access
+# token on first run exactly like config.json, so they must never be committed
+# either. config.example.json is the one deliberate exception: it ships no token.
+agent/config.*.json
+!agent/config.example.json
+*.secret
+*.secrets
+secrets.json
+credentials.json
+*credentials*.json
+*.pem
+*.key
+*.pfx
+*.p12
+.env
+.env.*
+
+# Drobo's own binaries. Keep them locally as reference material, but never
+# commit them -- they are still someone's copyrighted software, and this repo
+# may go public. See vendor/README.md.
+vendor/**
+!vendor/README.md
+
+# Probe output — may contain network details; commit deliberately, not by accident
+drobo-findings.json
+docs/captures/*.json
+
+# Packet captures stay LOCAL. They carry the device serial, disk serials, IPs
+# and NetBIOS names, and on an unencrypted protocol a password typed during
+# capture lands in them in plain text. The findings drawn from them live in
+# docs/protocol-map.md instead. See docs/captures/README.md.
+docs/captures/*.pcapng
+docs/captures/*.pcap
+docs/captures/*.etl
+docs/captures/*.jsonl
+docs/captures/*.bin
+
+# Build output
+bin/
+obj/
+# Published Windows binaries. The self-contained single-file build is ~155 MB;
+# it is a build artifact, not source. Rebuild with:
+#   dotnet publish windows/DroboDashboardReborn -c Release -r win-x64 \
+#     --self-contained true -p:PublishSingleFile=true -o windows/dist
+windows/dist/
+# WiX downloads its extensions here when build-installer.ps1 runs. Tool cache,
+# not source -- it is restored automatically on the next build.
+.wix/
+*.user
+DerivedData/
+*.xcuserstate
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Live device captures — contain real serial numbers and device identity.
+# Never commit these.
+docs/captures/*.xml
+docs/captures/*.raw
+docs/captures/*.json
+docs/captures/*.txt
+!docs/captures/README.md
+
+# Backups of the real config -- same secrets as the config itself. A
+# .bak-suffixed copy made during an edit was nearly committable on 2026-08-10;
+# the pattern covers any suffix so that cannot recur.
+agent/config.json.*
+
+# The build's personal-identifier watchlist: literally a list of the strings
+# that must never be tracked, so tracking the list would defeat it.
+windows/installer-identifiers.local.txt

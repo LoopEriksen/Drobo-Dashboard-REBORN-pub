@@ -1,0 +1,29 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Windows script files must be CRLF in the working tree.
+#
+# cmd.exe is genuinely unreliable with LF-only batch files -- `goto`, labels
+# and multi-line blocks can misbehave in ways that are maddening to diagnose,
+# because the file looks perfectly correct in an editor. `START DROBO
+# DASHBOARD.bat` is the file the owner double-clicks, so it is not somewhere to
+# leave a known fragility.
+#
+# `eol=crlf` checks these out with CRLF on every platform regardless of the
+# contributor's core.autocrlf setting, so this cannot regress on someone
+# else's machine.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Keep shell scripts LF, for the same reason in reverse: a CRLF shebang line
+# makes a shell script fail with a confusing "bad interpreter" error.
+*.sh text eol=lf
+
+# Binary -- never normalize, never diff as text.
+*.png binary
+*.jpg binary
+*.ico binary
+*.pcapng binary
+*.pcap binary
+*.tdf binary

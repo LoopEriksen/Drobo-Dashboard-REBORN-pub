@@ -1,0 +1,73 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- Only for TrayIconManager's System.Windows.Forms.NotifyIcon — the
+         rest of the app stays pure WPF. NotifyIcon works fine hosted inside
+         a WPF app (it just needs a Win32 message pump, which the WPF
+         Dispatcher already provides); this flag only adds the WinForms
+         assembly reference, it doesn't pull in a second UI framework. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!--
+    UseWindowsForms above makes the SDK add implicit global usings for
+    System.Drawing and System.Windows.Forms (see
+    obj\...\DroboDashboardReborn.GlobalUsings.g.cs) alongside ImplicitUsings'
+    own System.* set. Both namespaces have types the rest of this WPF app
+    already uses under different names from explicit `using System.Windows;`
+    / `using System.Windows.Media;` (Application, Brush), so left alone
+    those two implicit usings make every such reference project-wide
+    ambiguous (CS0104), not just inside TrayIconManager. Removing just the
+    two colliding implicit usings here fixes that without touching
+    ImplicitUsings itself; TrayIconManager.cs still gets what it needs from
+    its own explicit `using System.Drawing;` and fully-qualified
+    System.Windows.Forms.* references, neither of which this affects.
+  -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <!--
+    <ApplicationIcon> above only embeds the .ico as a native Win32 resource
+    (what Explorer/the taskbar read for the .exe's own file icon). Loading it
+    at runtime — the window's Icon property, and TrayIconManager's
+    NotifyIcon — needs it embedded as a WPF resource too, addressable via a
+    pack URI, which is what this ItemGroup does. generate_icon.py (same
+    folder) is the reproducible source for both .ico files; it is not a
+    build input, just kept alongside them.
+  -->
+  <ItemGroup>
+    <Resource Include="Assets\AppIcon.ico" />
+    <Resource Include="Assets\AppIconAlert.ico" />
+  </ItemGroup>
+
+  <!--
+    Packaging metadata only: the actual publish (self-contained, single-file,
+    win-x64) is invoked with explicit flags by windows/build-installer.ps1, not
+    baked in here, so plain `dotnet build`/`dotnet run` during development stay
+    fast and framework-dependent exactly as before.
+
+    Version is the one number to bump. Everything else derives from it:
+    build-installer.ps1 passes it to WiX as -d Version, it becomes the
+    Add/Remove Programs version, it names the staged folder and the MSI, and
+    it is what the app reports on its Tools tab. The agent keeps its own
+    matching VERSION in agent/drobo_agent/api.py; if you bump one, bump both.
+  -->
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>Drobo Dashboard REBORN</Product>
+    <AssemblyTitle>Drobo Dashboard REBORN</AssemblyTitle>
+    <Company>Drobo Dashboard REBORN Project</Company>
+    <Description>Native Windows client for the Drobo Dashboard REBORN agent.</Description>
+  </PropertyGroup>
+
+</Project>

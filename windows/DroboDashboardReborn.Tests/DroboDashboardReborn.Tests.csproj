@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests for the parts of the Windows app whose RULES matter more than their
+    pixels. Right now that means AlertNotifier: the owner has twice reported
+    this app being intrusive, and the notification rules are the difference
+    between "tells you a drive died" and "nags hourly about one you buried".
+
+    Deliberately NOT a test framework. The Python suites in this project are
+    hand-rolled (a check() function, printed PASS/FAIL, non-zero exit) for the
+    same reason the agent has no dependencies: nothing to rot. This matches
+    them, and needs no package restore.
+
+    It compiles the source file DIRECTLY rather than referencing the WPF
+    project. AlertNotifier deliberately has no UI dependency (it decides; the
+    caller displays), so this stays a plain console app that can run anywhere
+    and does not drag in net8.0-windows or WPF to test six branching rules.
+
+        dotnet run  (see README) from windows/DroboDashboardReborn.Tests
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DroboDashboardReborn.Tests</AssemblyName>
+    <RootNamespace>DroboDashboardReborn.Tests</RootNamespace>
+    <!-- The file under test lives in another folder; don't also glob our own. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\DroboDashboardReborn\AlertNotifier.cs" Link="AlertNotifier.cs" />
+  </ItemGroup>
+
+</Project>

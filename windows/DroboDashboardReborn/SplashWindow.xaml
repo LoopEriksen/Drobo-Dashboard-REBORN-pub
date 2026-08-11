@@ -1,0 +1,58 @@
+<Window x:Class="DroboDashboardReborn.SplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Drobo Dashboard REBORN"
+        Width="420" Height="200"
+        WindowStyle="None" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!--
+        Shown while the app starts, because starting is not instant: WPF has to
+        parse the XAML and JIT, and then the first thing the window does is ask
+        the agent what is out there, which involves an mDNS browse that takes a
+        few seconds by design. Without this the owner gets several seconds of
+        nothing at all and no way to tell a slow start from a hung one.
+
+        DELIBERATELY NOT Topmost. Every other window in this app is forbidden
+        from forcing itself in front. See RefuseToBePinnedOnTop in
+        MainWindow.xaml.cs, written after the owner reported this app being
+        intrusive twice. A splash screen is the classic excuse for making an
+        exception, and it is not a good enough one. If you alt-tab away while
+        this loads, it should let you.
+
+        ShowInTaskbar is false so it does not leave a second entry behind, and
+        it closes itself on a timer even if startup fails, so a crash during
+        initialisation can never leave a splash stuck on screen with no way to
+        dismiss it.
+    -->
+
+    <Border CornerRadius="8" Background="#161A20" BorderBrush="#2A323C" BorderThickness="1">
+        <Grid Margin="28,24,28,22">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="DROBO DASHBOARD" FontFamily="Consolas" FontSize="11"
+                       FontWeight="Bold" Foreground="#6B7683" Margin="0,0,0,2"/>
+            <TextBlock Grid.Row="1" Text="REBORN" FontSize="30" FontWeight="SemiBold"
+                       Foreground="#E6EBF0" Margin="0,0,0,0"/>
+
+            <!-- An indeterminate bar rather than a percentage. We genuinely do
+                 not know how long the network search will take, and inventing a
+                 percentage would be the same class of lie this project avoids
+                 everywhere else. -->
+            <StackPanel Grid.Row="3">
+                <TextBlock x:Name="StatusText" Text="Starting..." FontSize="12"
+                           Foreground="#8FA3BC" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                <ProgressBar x:Name="Bar" Height="3" IsIndeterminate="True"
+                             Background="#22262E" Foreground="#2C7BC4" BorderThickness="0"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

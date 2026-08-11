@@ -1,0 +1,61 @@
+{
+  "_comment": "Copy this to config.json and edit. The token is generated automatically on first run if you leave it empty.",
+  "agent": {
+    "bind": "127.0.0.1",
+    "port": 7420,
+    "token": "",
+    "poll_seconds": 10,
+    "history_length": 8640
+  },
+  "drobo": {
+    "_comment": "'drobo5n' talks to a real Drobo (the default); 'mock' runs the built-in simulator instead. host can be a static IP ('10.0.0.50'), 'auto' (or left blank) to find the device automatically -- no static IP/DHCP reservation needed -- or a mix: set 'hostname' to a known mDNS name like 'MyDrobo.local' as a second way to relocate it. expected_esa_id pins auto-discovery to one physical device (its permanent hardware serial -- printed in the agent log on first successful connect, so you can paste it in); leave it blank for first-run pairing. manual_discovery_ips are addresses you know, tried BEFORE the mDNS browse -- use these when your network filters multicast (many corporate LANs, guest SSIDs and some consumer routers do), which is when browsing returns nothing however long it listens; they say where to look, never what to trust, so identity checks still apply in full. discovery_sweep opts into a bounded subnet scan as a last resort if mDNS is blocked on your network; it's off by default because it's the slowest option.",
+    "driver": "mock",
+    "host": "auto",
+    "hostname": "",
+    "expected_esa_id": "",
+    "manual_discovery_ips": [],
+    "discovery_sweep": false,
+    "username": "",
+    "password": ""
+  },
+  "updates": {
+    "_comment": "DORMANT BY DEFAULT and that is the shipping state. The update machinery is built (agent/drobo_agent/updates.py) so it exists before it is needed rather than being assembled in a hurry on release day. With enabled false it opens no sockets and contacts nothing at all -- not a default endpoint that 404s, but no network activity whatsoever. To switch on later: set enabled true and point manifest_url at an https:// JSON file carrying version, download_url and sha256. The agent will only ever TELL you an update exists; downloading and installing stay a human decision, and an announcement without a valid SHA-256 is refused rather than shown.",
+    "enabled": false,
+    "manifest_url": "",
+    "channel": "stable",
+    "check_seconds": 86400
+  },
+  "alerts": {
+    "temperature_warning_c": 50.0,
+    "temperature_critical_c": 60.0,
+    "capacity_warning_fraction": 0.85,
+    "capacity_critical_fraction": 0.95,
+    "resend_seconds": 3600
+  },
+  "notify": {
+    "_comment": "Add 'ntfy' to backends and set a long random topic name to get alerts on your phone. Add 'email' to backends and fill the email block for SMTP alerts, which is what the original Drobo Dashboard did -- the agent sends them, not the Drobo, so an alert still arrives when the Drobo itself is the thing that is unreachable. The password lives here and nowhere else: this file is gitignored, and the password is never logged, never returned by the API, and never shown in the Windows app.",
+    "backends": [
+      "console"
+    ],
+    "ntfy": {
+      "server": "https://ntfy.sh",
+      "topic": ""
+    },
+    "email": {
+      "host": "",
+      "port": 587,
+      "username": "",
+      "password": "",
+      "from": "",
+      "to": "",
+      "use_tls": true
+    }
+  },
+  "photos": {
+    "_comment": "target_dir is where phone uploads land. Point it at a share on the Drobo.",
+    "enabled": true,
+    "target_dir": "",
+    "organize_by_date": true,
+    "max_upload_mb": 512
+  }
+}

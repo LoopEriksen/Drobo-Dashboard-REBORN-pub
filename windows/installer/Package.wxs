@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Drobo Dashboard REBORN installer.
+
+  Installs per-user (no admin prompt, matches a personal NAS tool) under
+  %LOCALAPPDATA%\Programs\DroboDashboardReborn, alongside the Python agent
+  it depends on. Windows Installer registers the Add/Remove Programs entry
+  and the uninstaller automatically: nothing hand-rolled here for that part.
+
+  StagingDir (passed by windows/build-installer.ps1 with -d StagingDir=...)
+  is the fully-assembled payload: the published WPF exe, the agent's Python
+  source (no config.json; see config.py, the token is generated on first
+  run), the launcher .bat, and the updater script. Files are harvested with
+  a glob so adding a file to the agent later doesn't require editing this
+  source.
+
+  Building this requires the WixToolset.UI.wixext extension (for the custom
+  desktop-shortcut checkbox dialog below); build-installer.ps1 passes
+  `-ext WixToolset.UI.wixext` to `wix build` for this reason. Install it once
+  with `wix extension add WixToolset.UI.wixext/5.0.2` (pin the version to
+  match the installed `wix` CLI's own major.minor; a mismatched version can
+  fail to resolve, see the WIX6101 warning that appears if you don't pin it).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Drobo Dashboard REBORN"
+           Manufacturer="Drobo Dashboard REBORN Project"
+           Version="$(var.Version)"
+           UpgradeCode="e9ad8ac3-dcc2-46d3-bf19-28065516bf1f"
+           Scope="perUser">
+
+    <SummaryInformation Description="Drobo Dashboard REBORN installer" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- The app's own mark (see windows/DroboDashboardReborn/Assets/generate_icon.py),
+         small enough (a few KB, unlike the ~150 MB self-contained exe) that embedding
+         it here for the shortcuts and the Add/Remove Programs entry costs nothing.
+         ProjectDir (passed by build-installer.ps1 with -d ProjectDir=...) rather than
+         a "..\" relative path, so this resolves the same way regardless of wix build's
+         own working directory when it's invoked. -->
+    <Icon Id="AppIcon.ico" SourceFile="$(var.ProjectDir)\Assets\AppIcon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Programs\DroboDashboardReborn" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="StartMenuAppFolder" Name="Drobo Dashboard REBORN" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- Everything under the staged payload, harvested by glob. -->
+    <ComponentGroup Id="PayloadFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.StagingDir)\**">
+        <Exclude Files="$(var.StagingDir)\**\*.pdb" />
+      </Files>
+    </ComponentGroup>
+
+    <!-- Shortcuts and the ARP uninstall affordance live in their own
+         components since Files-harvested components can't carry extra
+         registry keys or shortcuts themselves. -->
+    <Component Id="StartMenuShortcut" Directory="StartMenuAppFolder" Guid="6e2b6a2a-2f39-4a4a-9f9a-6f5b6d6c1a01">
+      <Shortcut Id="StartMenuShortcutFile"
+                Name="Drobo Dashboard REBORN"
+                Description="Start the Drobo agent and the dashboard"
+                Target="[INSTALLFOLDER]Launch-DroboDashboardReborn.bat"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon.ico" />
+      <Shortcut Id="StartMenuUpdateCheckShortcut"
+                Name="Check for Updates"
+                Description="Check whether a newer Drobo Dashboard REBORN is available"
+                Target="[INSTALLFOLDER]Check-ForUpdates.bat"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveStartMenuAppFolder" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                      Key="Software\DroboDashboardReborn"
+                      Name="StartMenuInstalled"
+                      Type="integer"
+                      Value="1"
+                      KeyPath="yes" />
+    </Component>
+
+    <!-- Optional, per the owner's ask: "ask the user if they want a desktop
+         shortcut". Ticked by default (DESKTOPSHORTCUT="1" below) in both the
+         interactive installer (SetupDlg's checkbox, in the UI section further
+         down) and a silent/quiet install, where there's no dialog to ask;
+         set DESKTOPSHORTCUT=0 on the msiexec command line to opt out non-
+         interactively, e.g.:
+             msiexec /i DroboDashboardReborn-*.msi /qn DESKTOPSHORTCUT=0
+         Component-level Condition means the shortcut is simply never
+         installed when unticked/zero, not installed-then-removed, and on
+         uninstall it's cleaned up either way since Windows Installer removes
+         everything the component owns regardless of the condition that was
+         in force at install time. -->
+    <!-- Note the explicit "&lt;&gt; &quot;0&quot;" comparison, not a bare
+         "DESKTOPSHORTCUT" condition: a bare property name in MSI conditional
+         syntax evaluates True as long as the property is SET to anything at
+         all, including the string "0"; there is no built-in "0 is falsy"
+         behaviour for a property standing alone (confirmed against a real
+         install: a bare condition let this component through even with
+         DESKTOPSHORTCUT=0 on the command line, which is what led to this
+         explicit comparison instead). -->
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="9b3f1e3c-7c2a-4f2e-8d3a-2b6a7e4f1a02"
+               Condition="DESKTOPSHORTCUT&lt;&gt;&quot;0&quot;">
+      <Shortcut Id="DesktopShortcutFile"
+                Name="Drobo Dashboard REBORN"
+                Description="Start the Drobo agent and the dashboard"
+                Target="[INSTALLFOLDER]Launch-DroboDashboardReborn.bat"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon.ico" />
+      <RegistryValue Root="HKCU"
+                      Key="Software\DroboDashboardReborn"
+                      Name="DesktopShortcutInstalled"
+                      Type="integer"
+                      Value="1"
+                      KeyPath="yes" />
+    </Component>
+
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <!-- Default ON (ticked in the UI, and in force for a silent/quiet
+         install with no override); see the DesktopShortcut component
+         above for how to opt out from the command line. -->
+    <Property Id="DESKTOPSHORTCUT" Value="1" />
+
+    <Feature Id="Main" Title="Drobo Dashboard REBORN" Level="1">
+      <ComponentGroupRef Id="PayloadFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <!-- ================= UI: one dialog, one checkbox =================
+         Deliberately not one of the extension's prebuilt WixUI_* wizard
+         sequences (WixUI_InstallDir etc.); those bring a license-agreement
+         page and a directory-chooser this app has no use for (the install
+         location is fixed; there's no EULA). Instead this reuses just the
+         extension's common supporting dialogs (progress bar, error/resume/
+         files-in-use handling, the Cancel confirmation popup, the finish
+         page) via DialogRef, and adds exactly one dialog of its own:
+         SetupDlg, a combined welcome/confirm screen with the desktop-
+         shortcut checkbox and an Install button. Shown only on a fresh
+         install (Condition="NOT Installed"), never on uninstall: there is
+         nothing to ask on the way out, and ARPNOREPAIR="1" above means
+         there is no repair/modify path to worry about either.
+
+         Every element and attribute here was verified against a real build
+         (`wix build`, then the resulting .msi's Property/Component/Dialog/
+         ControlEvent/InstallUISequence tables inspected directly via the
+         WindowsInstaller COM API) before landing in this file, not
+         authored from memory and hoped to be right. -->
+    <UI>
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <!-- Standard supporting dialogs. Explicit DialogRef because nothing
+           below names them directly (unlike ExitDialog and CancelDlg,
+           referenced from SetupDlg's own controls); without this they
+           would never be linked into the package at all. -->
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Dialog Id="SetupDlg" Width="370" Height="270" Title="Drobo Dashboard REBORN Setup">
+        <Control Id="Bitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="no" Text="WixUI_Bmp_Dialog" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="135" Y="20" Width="220" Height="40" Transparent="yes" NoPrefix="yes"
+                  Text="{\WixUI_Font_Title}Welcome to the Drobo Dashboard REBORN Setup Wizard" />
+        <Control Id="Description" Type="Text" X="135" Y="65" Width="220" Height="70" Transparent="yes" NoPrefix="yes"
+                  Text="This installs Drobo Dashboard REBORN for the current user only, no administrator rights are needed. Click Install to begin." />
+        <Control Id="DesktopShortcutCheckBox" Type="CheckBox" X="135" Y="150" Width="220" Height="18"
+                  Property="DESKTOPSHORTCUT" CheckBoxValue="1" Text="Create a shortcut on the desktop" />
+        <Control Id="Install" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Install">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Disabled="yes" Text="Back" />
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <InstallUISequence>
+        <Show Dialog="SetupDlg" Before="ProgressDlg" Condition="NOT Installed" />
+      </InstallUISequence>
+
+      <!-- The stock ExitDialog's Finish button has no behaviour of its own
+           until something publishes EndDialog/Return to it (every WixUI_*
+           dialog set does exactly this; see WixUI_InstallDir.wxs upstream);
+           without it, clicking Finish would just sit there. -->
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" />
+    </UI>
+    <!-- Bitmaps (including WixUI_Bmp_Dialog, used above) and the localized
+         strings the supporting dialogs need. -->
+    <UIRef Id="WixUI_Common" />
+
+  </Package>
+</Wix>

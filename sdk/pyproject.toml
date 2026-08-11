@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drobo-nasd"
+version = "0.1.0"
+description = "Talk to a Drobo NAS. The protocol, recovered from firmware and confirmed against real hardware."
+readme = "README.md"
+requires-python = ">=3.10"
+# No license is granted yet -- deliberately. This field once said MIT, which
+# contradicted the project's stated all-rights-reserved posture in
+# pip-consumable metadata: anyone installing the package would receive a
+# grant the owner never made, and a published grant cannot be retracted.
+# When the owner picks a real license, set it here AND add a LICENSE file.
+license = { text = "Proprietary - all rights reserved (no license granted yet)" }
+keywords = ["drobo", "nas", "storage", "beyondraid", "nasd"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: System Administrators",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Hardware",
+  "Topic :: System :: Monitoring",
+]
+
+# No dependencies, deliberately. This talks to hardware whose vendor no longer
+# exists; anything it depended on would be one more thing that can rot before
+# the Drobo does. Standard library only.
+dependencies = []
+
+[project.urls]
+Source = "https://github.com/LoopEriksen/Drobo-Dashboard-REBORN"
+
+[tool.setuptools.packages.find]
+include = ["drobo_nasd*"]

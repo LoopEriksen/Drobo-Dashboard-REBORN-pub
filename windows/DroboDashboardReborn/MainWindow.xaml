@@ -1,0 +1,1398 @@
+<Window x:Class="DroboDashboardReborn.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Drobo Dashboard REBORN"
+        Icon="Assets/AppIcon.ico"
+        MinHeight="440" MinWidth="620"
+        WindowStartupLocation="CenterScreen"
+        Topmost="False"
+        Background="#0D1116" Foreground="#E6EBF0"
+        FontFamily="Segoe UI" FontSize="14"
+        UseLayoutRounding="True">
+    <!--
+      Height/Width/MaxHeight/MaxWidth are NOT set here — they depend on the
+      current monitor's work area, which XAML can't see. MainWindow.xaml.cs's
+      ApplyStartupSizing() sets all four in the constructor, before the
+      window is shown, using SystemParameters.WorkArea.
+
+      Topmost="False" is explicit, not just the default: this window must
+      never sit above whatever else the owner is doing, on a timer, on
+      refresh, or when an alert shows up. Nothing in this file ever calls
+      Activate()/Focus() either, for the same reason.
+    -->
+
+    <Window.Resources>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#6B7683"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+        </Style>
+        <!-- Compact on purpose: this drives the drive-bay cards, the capacity
+             card, and every other panel in the app, so keeping padding tight
+             here is what lets all five bays fit without scrolling. -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="#161B21"/>
+            <Setter Property="BorderBrush" Value="#262E37"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+
+        <!-- calm informational strip: a Windows policy change, not an error -->
+        <Style x:Key="InfoStrip" TargetType="Border">
+            <Setter Property="Background" Value="#12202E"/>
+            <Setter Property="BorderBrush" Value="#1B3A54"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+        <!-- same shape as InfoStrip, warning colours: for the degraded-link note
+             and for the landing page's "couldn't reach it" messages -->
+        <Style x:Key="WarnStrip" TargetType="Border" BasedOn="{StaticResource InfoStrip}">
+            <Setter Property="Background" Value="#2E2311"/>
+            <Setter Property="BorderBrush" Value="#4A3A16"/>
+        </Style>
+
+        <!-- same shape as Card, plus a visible hover reaction — the device
+             rows on the landing page are clickable (a real Connect button,
+             plus a double-click anywhere on the row), so they need to look
+             interactive before you click anything, not just act like it. -->
+        <Style x:Key="DeviceRowCard" TargetType="Border" BasedOn="{StaticResource Card}">
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#1B222B"/>
+                    <Setter Property="BorderBrush" Value="#2C7BC4"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Background" Value="#2C7BC4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Background" Value="#22262E"/>
+            <Setter Property="Foreground" Value="#E6EBF0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#39424D"/>
+        </Style>
+
+        <!--
+          The stock TabControl/TabItem chrome is drawn from Windows classic
+          theme colours (grey gradients) and would look completely out of
+          place on this dark background, so both get flat custom templates
+          here rather than fighting the default one with setters.
+        -->
+        <Style TargetType="{x:Type TabControl}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabControl}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" BorderBrush="#262E37" BorderThickness="0,0,0,1" Margin="0,0,0,14">
+                                <TabPanel x:Name="HeaderPanel" IsItemsHost="True" Background="Transparent"/>
+                            </Border>
+                            <ContentPresenter Grid.Row="1" x:Name="PART_SelectedContentHost"
+                                               ContentSource="SelectedContent"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type TabItem}">
+            <Setter Property="Foreground" Value="#8B93A1"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabItem}">
+                        <Border x:Name="Bd" Background="Transparent" BorderThickness="0,0,0,2"
+                                BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="Content" ContentSource="Header"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#2C7BC4"/>
+                                <Setter Property="Foreground" Value="#E6EBF0"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#E6EBF0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18">
+
+        <!-- ================= LANDING: pick a Drobo, or fall back to typing an address ================= -->
+        <!-- Shown until we're actually connected. See MainWindow.ShowLanding/ShowDashboard. -->
+        <Grid x:Name="LandingRoot">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- product title — top of the hierarchy: bigger and bolder than
+                 the "Drobos on your network" section heading below it, same
+                 font family as the rest of the app (inherited from Window). -->
+            <TextBlock Grid.Row="0" Text="Drobo Dashboard REBORN" FontSize="30" FontWeight="Bold"
+                       Margin="0,0,0,10"/>
+
+            <!-- heading + refresh -->
+            <Grid Grid.Row="1" Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Drobos on your network" FontSize="22" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="LandingSub" Text="Pick the one you want to open."
+                               Style="{StaticResource Label}" FontSize="12" Margin="0,4,0,0"/>
+                </StackPanel>
+                <Button x:Name="RefreshBtn" Grid.Column="1" Content="Refresh"
+                        Style="{StaticResource SecondaryButton}" VerticalAlignment="Center"
+                        Click="RefreshBtn_Click"/>
+            </Grid>
+
+            <!-- searching state / device cards / empty state — all scrollable so a
+                 long list (or the explanatory text in the empty state) never gets clipped -->
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <StackPanel x:Name="SearchingPanel" Visibility="Collapsed" Margin="0,4,0,14">
+                        <TextBlock Text="Searching the network…" Style="{StaticResource Label}" FontSize="13" Margin="0,0,0,8"/>
+                        <ProgressBar IsIndeterminate="True" Height="4" Background="#22262E" Foreground="#2C7BC4" BorderThickness="0"/>
+                    </StackPanel>
+
+                    <!-- Focusable="False": ItemsControl derives from Control, which
+                         defaults Focusable to true, so without this a Tab press
+                         lands on the (invisible, non-interactive) list container
+                         itself before ever reaching a row's Connect button. Each
+                         row's Button is still its own tab stop regardless. -->
+                    <ItemsControl x:Name="DiscoveredDevices" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <!-- Double-clicking anywhere on the row connects too
+                                     (DeviceRow_MouseLeftButtonDown checks e.ClickCount),
+                                     but the visible, single-click action is the real
+                                     Button below. Both paths call the same
+                                     ConnectAndShowDashboard. DeviceRowCard's IsMouseOver
+                                     trigger gives the row a hover reaction so it reads
+                                     as interactive even before you click anything. -->
+                                <Border Style="{StaticResource DeviceRowCard}" Padding="14" Margin="0,0,0,10" Cursor="Hand"
+                                        Focusable="False"
+                                        MouseLeftButtonDown="DeviceRow_MouseLeftButtonDown">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold"/>
+                                                <Border Background="#10281B" CornerRadius="8" Padding="7,1"
+                                                        Margin="10,0,0,0" VerticalAlignment="Center"
+                                                        Visibility="{Binding InUseVisibility}">
+                                                    <TextBlock Text="IN USE" FontFamily="Consolas" FontSize="9" Foreground="#46C07A"/>
+                                                </Border>
+                                                <!-- "MANUALLY ADDED" (confirmed by a later discovery
+                                                     pass) or "NOT VERIFIED" (not yet confirmed) —
+                                                     see DroboSettings.ManualDevice for why the app
+                                                     can't check a manual address on demand. -->
+                                                <Border CornerRadius="8" Padding="7,1" Margin="10,0,0,0"
+                                                        VerticalAlignment="Center"
+                                                        Background="{Binding BadgeBackground}"
+                                                        Visibility="{Binding BadgeVisibility}">
+                                                    <TextBlock Text="{Binding BadgeText}" FontFamily="Consolas" FontSize="9"
+                                                               Foreground="{Binding BadgeForeground}"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Summary}" Style="{StaticResource Label}"
+                                                       FontSize="12" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <!-- A real Button, tab-focusable and Enter/Space-activated
+                                             for free (ButtonBase already does this) — see the
+                                             owner's ask: "make the connect button an actual button". -->
+                                        <Button Grid.Column="1" Content="Connect &#8594;"
+                                                Style="{StaticResource PrimaryButton}"
+                                                VerticalAlignment="Center"
+                                                Click="DeviceConnectButton_Click"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- genuinely helpful empty state: mDNS is unreliable on some Windows
+                         networks, so offer the manual fallback right here -->
+                    <Border x:Name="EmptyStateBox" Style="{StaticResource Card}" Padding="14" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock x:Name="EmptyStateTitle" Text="No Drobos showed up." FontSize="14" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="EmptyStateDetail" Style="{StaticResource Label}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,12"
+                                       Text="Automatic discovery doesn't work on every Windows network. You can enter its address yourself instead."/>
+                            <Button Content="Add one in Settings" Style="{StaticResource SecondaryButton}"
+                                    HorizontalAlignment="Left" Click="EnterAddressManually_Click"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="DiscoverErrorBox" Style="{StaticResource WarnStrip}" Visibility="Collapsed">
+                        <TextBlock x:Name="DiscoverErrorText" TextWrapping="Wrap" FontSize="12" Foreground="#E9C98A"/>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- settings: tucked away, not the first thing the owner sees —
+                 a plain toggle button rather than a WPF Expander, so it stays in the
+                 same flat dark style as everything else instead of the stock chrome.
+                 Renamed from "Connection settings" — this is now the settings home:
+                 forgetting a saved Drobo, adding one by hand, the auto-discovery
+                 toggle, and (further down, since they're rarely touched) the agent
+                 URL/token fields. -->
+            <StackPanel Grid.Row="3" Margin="0,14,0,0">
+                <!-- STATIC, and deliberately so. This used to be a collapsed card
+                     behind a toggle button, so opening it shoved everything below it
+                     down the page and closing it yanked it all back up — the layout
+                     jumping about under the pointer. It now sits permanently where it
+                     used to expand to, and the toggle is gone. Nothing here is secret
+                     or dangerous enough to be worth hiding behind a click. -->
+                <TextBlock Text="SETTINGS" Style="{StaticResource Label}" Margin="0,0,0,8"/>
+                <Border x:Name="ConnSettingsBox" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,0">
+                    <StackPanel>
+
+                        <!-- only shown once something is actually remembered — turns off the
+                             auto-open behaviour without making the owner go find the settings file -->
+                        <Button x:Name="ForgetDeviceLink" Content="Forget saved Drobo"
+                                Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                                Margin="0,0,0,16" Visibility="Collapsed" Click="ForgetDevice_Click"/>
+
+                        <!-- manually-added Drobos: the way in on networks that filter
+                             multicast, where mDNS browsing returns nothing however long
+                             it listens. Each address is checked directly when added and
+                             again on every search (/api/discover?host=), so the picker
+                             shows the device's own name and model — not just the address
+                             you typed with a hopeful label on it. -->
+                        <TextBlock Text="ADD A DROBO MANUALLY" Style="{StaticResource Label}" Margin="0,0,0,6"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="ADDRESS" Style="{StaticResource Label}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBox x:Name="ManualHostInput" Grid.Column="1"
+                                     Background="#0D1116" Foreground="#E6EBF0" BorderBrush="#262E37"
+                                     Padding="6,4" VerticalContentAlignment="Center"/>
+                            <Button Grid.Column="2" Content="Add" Style="{StaticResource SecondaryButton}"
+                                    Margin="8,0,0,0" Click="AddManualDevice_Click"/>
+                        </Grid>
+                        <!-- The answer to "did that address work?", given straight away.
+                             The agent can now probe one named address on demand, so a
+                             typo and a switched-off Drobo no longer look identical. -->
+                        <TextBlock x:Name="ManualAddResult" TextWrapping="Wrap" FontSize="11"
+                                   Margin="0,0,0,10" Visibility="Collapsed"/>
+                        <!-- Focusable="False": see the same note on DiscoveredDevices —
+                             a plain ItemsControl is Focusable by default (it derives
+                             from Control), which would otherwise cost Tab an extra,
+                             invisible stop before reaching a row's Remove button. -->
+                        <ItemsControl x:Name="ManualDevicesList" Margin="0,0,0,4" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding DisplayText}" FontFamily="Consolas"
+                                                   FontSize="12" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1" Content="Remove" Style="{StaticResource SecondaryButton}"
+                                                Padding="8,3" Click="RemoveManualDevice_Click"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="ManualDevicesEmpty" Text="No manually added Drobos."
+                                   Style="{StaticResource Label}" FontSize="11" Margin="0,0,0,16"/>
+
+                        <!-- Desktop notifications used to be configured here. They moved to
+                             SETTINGS > PREFERENCES, which is where every other "how this app
+                             behaves" switch now lives. Two sets of controls writing the same
+                             settings file meant whichever one you did not touch showed a stale
+                             value. -->
+
+                        <!-- auto-discovery: on by default. When off, the app never calls
+                             /api/discover at all — only manually-added addresses show up,
+                             and the landing page says so instead of just looking empty. -->
+                        <CheckBox x:Name="AutoDiscoveryCheck" Content="Automatically search the network for Drobos"
+                                  Foreground="#E6EBF0" IsChecked="True" Margin="0,0,0,16"
+                                  Checked="AutoDiscoveryCheck_Changed" Unchecked="AutoDiscoveryCheck_Changed"/>
+
+                        <!-- rarely touched — direct agent connection, below the
+                             day-to-day settings above -->
+                        <TextBlock x:Name="TokenHelp" Style="{StaticResource Label}" FontSize="12"
+                                   TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"
+                                   Text="The token proves this app is allowed to talk to your agent. If the agent runs on this PC, it's in the agent's config.json, next to &quot;token&quot;. Paste it in below."/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="180"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="AGENT" Style="{StaticResource Label}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBox x:Name="AgentUrl" Grid.Column="1" Text="http://127.0.0.1:7420"
+                                     Background="#0D1116" Foreground="#E6EBF0" BorderBrush="#262E37"
+                                     Padding="6,4" VerticalContentAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="TOKEN" Style="{StaticResource Label}"
+                                       VerticalAlignment="Center" Margin="14,0,8,0"/>
+                            <PasswordBox x:Name="Token" Grid.Column="3"
+                                         Background="#0D1116" Foreground="#E6EBF0" BorderBrush="#262E37"
+                                         Padding="6,4" VerticalContentAlignment="Center"/>
+                            <Button x:Name="ConnectBtn" Grid.Column="4" Content="Connect" Margin="12,0,0,0"
+                                    Style="{StaticResource PrimaryButton}" Padding="14,5" Click="ConnectBtn_Click"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- ================= DASHBOARD: connected view, tabs and all ================= -->
+        <Grid x:Name="DashboardRoot" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- device header -->
+            <Grid Grid.Row="0" Margin="2,0,2,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <!-- The product name stays visible after you connect.
+                         It used to appear only on the picker, so the moment
+                         you chose a Drobo the software's own name vanished
+                         and the window showed nothing but the device. Small
+                         and muted here on purpose: once you are in, the
+                         Drobo is the subject and this is just the letterhead. -->
+                    <TextBlock Text="DROBO DASHBOARD REBORN" FontSize="10"
+                               FontWeight="Bold" Foreground="#6B7683"
+                               FontFamily="Consolas" Margin="0,0,0,2"/>
+                    <TextBlock x:Name="DeviceName" Text="Not connected" FontSize="24" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="DeviceSub" Text="Enter the agent token and press Connect."
+                               Style="{StaticResource Label}" FontSize="12" Margin="0,2,0,0"/>
+                </StackPanel>
+                <!-- "and log in" — Shares is where signing in to a share actually happens
+                     (ConnectShareDialog), so this just jumps there -->
+                <Button Grid.Column="1" Content="Sign in to files" Style="{StaticResource SecondaryButton}"
+                        VerticalAlignment="Center" Margin="0,0,8,0" Click="GoToShares_Click"/>
+                <Button Grid.Column="2" Content="Change Drobo" Style="{StaticResource SecondaryButton}"
+                        VerticalAlignment="Center" Margin="0,0,12,0" Click="ChangeDrobo_Click"/>
+                <Border x:Name="StatePill" Grid.Column="3" VerticalAlignment="Center"
+                        CornerRadius="12" Padding="12,4" Background="#22262E" BorderThickness="1"
+                        BorderBrush="#39424D">
+                    <TextBlock x:Name="StateText" Text="&#8212;" FontFamily="Consolas" FontSize="12"
+                               Foreground="#8B93A1"/>
+                </Border>
+            </Grid>
+
+            <!-- Network mismatch. Sits ABOVE the tabs, not inside Status, because
+                 when it is showing every tab is stale — shares, settings and
+                 DroboApps all need the same connection the status poll just
+                 failed on. Warning colours rather than critical: the array is
+                 almost certainly fine and it is this PC that needs attention,
+                 so painting it red would point at the wrong machine.
+                 Driven by network_hint from /api/status, which the agent fills
+                 in only when the Drobo is unreachable AND the mismatch actually
+                 explains it — see monitor._network_hint. -->
+            <Border x:Name="NetworkBox" Grid.Row="1" Style="{StaticResource WarnStrip}"
+                    Visibility="Collapsed">
+                <DockPanel LastChildFill="True">
+                    <Border DockPanel.Dock="Left" CornerRadius="8" Padding="8,1" Background="#0D1116"
+                            VerticalAlignment="Top" Margin="0,1,10,0">
+                        <TextBlock Text="NETWORK" FontFamily="Consolas" FontSize="10" Foreground="#E9A83C"/>
+                    </Border>
+                    <StackPanel>
+                        <TextBlock x:Name="NetworkHeadline" TextWrapping="Wrap" FontSize="12"
+                                   FontWeight="SemiBold" Foreground="#E9C98A"/>
+                        <!-- Always rendered with the headline above it: the detail text
+                             opens with "It is on…" and reads as a fragment alone.
+                             See Diagnosis.detail in netcheck.py. -->
+                        <TextBlock x:Name="NetworkDetail" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="#E9C98A" Margin="0,3,0,0"/>
+                        <!-- The honest limits of the claim, muted but never dropped. -->
+                        <TextBlock x:Name="NetworkCaveat" TextWrapping="Wrap" FontSize="11"
+                                   Foreground="#A28A63" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Standing note about the running firmware — shown only for the two
+                 builds Drobo withdrew (4.3.0 / 4.3.1). InfoStrip, not WarnStrip,
+                 and that is the whole point: nothing here needs fixing, and the
+                 one action that would "fix" it is writing an unsigned image to
+                 hardware with no recovery tool. See firmware.py. -->
+            <Border x:Name="FirmwareBox" Grid.Row="2" Style="{StaticResource InfoStrip}"
+                    Visibility="Collapsed">
+                <DockPanel LastChildFill="True">
+                    <Border DockPanel.Dock="Left" CornerRadius="8" Padding="8,1" Background="#0D1116"
+                            VerticalAlignment="Top" Margin="0,1,10,0">
+                        <TextBlock Text="FIRMWARE" FontFamily="Consolas" FontSize="10" Foreground="#5C8DFF"/>
+                    </Border>
+                    <StackPanel>
+                        <TextBlock x:Name="FirmwareHeadline" TextWrapping="Wrap" FontSize="12"
+                                   FontWeight="SemiBold" Foreground="#C8D6EA"/>
+                        <TextBlock x:Name="FirmwareDetail" TextWrapping="Wrap" FontSize="11"
+                                   Foreground="#8FA3BC" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <TabControl x:Name="MainTabs" Grid.Row="3" SelectionChanged="MainTabs_SelectionChanged">
+
+                <!-- ================= STATUS ================= -->
+                <!-- Capacity + drive bays only — alerts live on their own tab now
+                     (see the ALERTS tab below), not as a widget here. -->
+                <TabItem x:Name="TabStatus" Header="STATUS">
+                    <!-- See the window-sizing note at the top of this file: the smaller
+                         startup size means this tab's content can be taller than the
+                         window, so the whole tab scrolls instead of anything becoming
+                         unreachable — even though the compact bay rows below are
+                         sized to fit all five without scrolling at the maximized size. -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- capacity -->
+                            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="CAPACITY" Style="{StaticResource Label}" Margin="0,0,0,6"/>
+                                    <!-- Filled proportionally via Grid star-columns (set in
+                                         Render), not a pixel Width read off ActualWidth — the
+                                         landing page means this can render for the first time
+                                         while its own Grid.Row is still Collapsed, when
+                                         ActualWidth would just be zero. Star-sizing is resolved
+                                         by the layout system whenever the row actually becomes
+                                         visible, so it can't go stale like that. -->
+                                    <Border Height="12" CornerRadius="6" Background="#22262E" ClipToBounds="True">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition x:Name="CapBarFillCol" Width="0*"/>
+                                                <ColumnDefinition x:Name="CapBarRestCol" Width="1*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border x:Name="CapBar" Grid.Column="0" CornerRadius="6" Background="#2C7BC4"/>
+                                        </Grid>
+                                    </Border>
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <StackPanel Margin="0,0,24,0">
+                                            <TextBlock x:Name="CapUsed" Text="&#8212;" FontFamily="Consolas" FontSize="16"/>
+                                            <TextBlock Text="used" Style="{StaticResource Label}"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="0,0,24,0">
+                                            <TextBlock x:Name="CapFree" Text="&#8212;" FontFamily="Consolas" FontSize="16"/>
+                                            <TextBlock Text="free" Style="{StaticResource Label}"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="0,0,24,0">
+                                            <TextBlock x:Name="CapUsable" Text="&#8212;" FontFamily="Consolas" FontSize="16"/>
+                                            <TextBlock Text="usable" Style="{StaticResource Label}"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="0,0,24,0">
+                                            <TextBlock x:Name="CapProt" Text="&#8212;" FontFamily="Consolas" FontSize="16"/>
+                                            <TextBlock Text="protection" Style="{StaticResource Label}"/>
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock x:Name="CapRaw" Text="&#8212;" FontFamily="Consolas" FontSize="16"/>
+                                            <TextBlock Text="raw pack" Style="{StaticResource Label}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- rebuild / double-degraded notice: hidden entirely when the pack
+                                 is healthy (both counts are 0). Same wording as webui.py's
+                                 rebuildPanel — see PackHealth in models.py for what these counts mean. -->
+                            <Border x:Name="RebuildBox" Grid.Row="1" Style="{StaticResource WarnStrip}"
+                                    Visibility="Collapsed">
+                                <DockPanel LastChildFill="True">
+                                    <Border DockPanel.Dock="Left" CornerRadius="8" Padding="8,1" Background="#0D1116"
+                                            VerticalAlignment="Top" Margin="0,1,10,0">
+                                        <TextBlock Text="REBUILD" FontFamily="Consolas" FontSize="10" Foreground="#E9A83C"/>
+                                    </Border>
+                                    <TextBlock x:Name="RebuildNote" TextWrapping="Wrap" FontSize="12" Foreground="#E9C98A"/>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- drive bays: one dense line per bay (bay, model+serial,
+                                 firmware, size, error/SSD-life flags only when they
+                                 matter, state) instead of a tall stacked card -->
+                            <Border Grid.Row="2" Style="{StaticResource Card}">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Top" Text="DRIVE BAYS" Style="{StaticResource Label}"
+                                               Margin="0,0,0,6"/>
+                                    <ItemsControl x:Name="Bays">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#0D1116" BorderBrush="#262E37" BorderThickness="1"
+                                                        CornerRadius="3" Padding="8,5" Margin="0,0,0,3">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="4"/>
+                                                            <ColumnDefinition Width="40"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="60"/>
+                                                            <ColumnDefinition Width="64"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Rectangle Grid.Column="0" Width="3" RadiusX="1.5" RadiusY="1.5"
+                                                                   Fill="{Binding Stripe}" VerticalAlignment="Stretch" Margin="0,0,8,0"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding BayLabel}"
+                                                                   FontFamily="Consolas" FontSize="11" Foreground="#6B7683"
+                                                                   VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding ModelSerial}"
+                                                                   FontFamily="Consolas" FontSize="12"
+                                                                   VerticalAlignment="Center" Margin="0,0,10,0"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Grid.Column="3" Text="{Binding Firmware}"
+                                                                   FontFamily="Consolas" FontSize="10" Foreground="#6B7683"
+                                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                        <TextBlock Grid.Column="4" Text="{Binding Flags}"
+                                                                   Visibility="{Binding FlagsVisibility}"
+                                                                   Foreground="{Binding FlagsBrush}"
+                                                                   FontFamily="Consolas" FontSize="10"
+                                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                        <TextBlock Grid.Column="5" Text="{Binding Size}" FontFamily="Consolas" FontSize="12"
+                                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                        <TextBlock Grid.Column="6" Text="{Binding StateText}"
+                                                                   FontFamily="Consolas" FontSize="11"
+                                                                   Foreground="{Binding StateBrush}"
+                                                                   VerticalAlignment="Center" TextAlignment="Right"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- recent activity: NOT a live throughput reading. The device's own
+                                 counters lag ~25s in both directions on top of the agent's 120s
+                                 poll interval (sysinfo_seconds), so the array can genuinely be busy
+                                 while this still reads Idle, and it can keep showing motion for a
+                                 couple of minutes after the activity actually stopped. See
+                                 parse_performance's docstring in nasd/sysinfo.py and
+                                 "Confirmed: the counters move…" in docs/command-surface.md for the
+                                 measurements behind that.
+
+                                 Three states, kept visually distinct on purpose — collapsing any
+                                 two of them together would misrepresent the array:
+                                   - never reported (measured=false): PerfUnknown, muted "Not
+                                     reported yet" — must never look like a row of zeros.
+                                   - measured, everything zero: PerfIdle, plain "Idle".
+                                   - measured, anything nonzero: PerfActive, the actual figures.
+                                 tier_iops is deliberately left off — it was 0 in every real
+                                 observation and isn't worth the row. -->
+                            <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="RECENT ACTIVITY" Style="{StaticResource Label}" Margin="0,0,0,6"/>
+
+                                    <TextBlock x:Name="PerfUnknown" Text="Not reported yet"
+                                               FontFamily="Consolas" FontSize="13" Foreground="#6B7683"
+                                               Visibility="Collapsed"/>
+                                    <TextBlock x:Name="PerfIdle" Text="Idle"
+                                               FontFamily="Consolas" FontSize="16" Foreground="#8B93A1"
+                                               Visibility="Collapsed"/>
+                                    <StackPanel x:Name="PerfActive" Orientation="Horizontal" Visibility="Collapsed">
+                                        <StackPanel Margin="0,0,24,0">
+                                            <TextBlock x:Name="PerfRead" Text="&#8212;" FontFamily="Consolas" FontSize="16"/>
+                                            <TextBlock Text="read" Style="{StaticResource Label}"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="0,0,24,0">
+                                            <TextBlock x:Name="PerfWrite" Text="&#8212;" FontFamily="Consolas" FontSize="16"/>
+                                            <TextBlock Text="write" Style="{StaticResource Label}"/>
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock x:Name="PerfIops" Text="&#8212;" FontFamily="Consolas" FontSize="16"/>
+                                            <TextBlock Text="IOPS" Style="{StaticResource Label}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                               Text="Recent activity, not a live reading -- it can lag real use by up to a couple of minutes, so seeing 0 during a big copy is normal."/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- VOLUMES — what the pack is carved into, i.e. what
+                                 Windows shows as drive letters. Read from the status
+                                 greeting, so it costs no extra command.
+
+                                 The honesty problem is "can grow to". The device
+                                 reports a 70 TB ceiling per volume; this array holds
+                                 under 9 TB usable. Showing 70 TB alone would read as
+                                 headroom that does not exist, so the pack's real
+                                 capacity sits directly beneath it. Hidden entirely
+                                 when the device reports no volumes. -->
+                            <Border x:Name="VolumesCard" Grid.Row="4"
+                                    Style="{StaticResource Card}" Margin="0,10,0,0"
+                                    Visibility="Collapsed">
+                                <StackPanel>
+                                    <TextBlock Text="VOLUMES" Style="{StaticResource Label}" Margin="0,0,0,6"/>
+                                    <TextBlock x:Name="VolumesIntro" Foreground="#8B93A1"
+                                               FontSize="11.5" TextWrapping="Wrap"
+                                               Margin="0,0,0,8"/>
+                                    <ItemsControl x:Name="Volumes">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#0D1116" BorderBrush="#262E37"
+                                                        BorderThickness="1" CornerRadius="3"
+                                                        Padding="10,7" Margin="0,0,0,5">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Name}"
+                                                                       FontFamily="Consolas" FontSize="13"/>
+                                                            <TextBlock Text="{Binding Detail}"
+                                                                       Foreground="#6B7683"
+                                                                       FontFamily="Consolas" FontSize="10"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Ceiling}"
+                                                                       FontFamily="Consolas" FontSize="12"
+                                                                       TextAlignment="Right"/>
+                                                            <TextBlock Text="{Binding PackHolds}"
+                                                                       Foreground="#6B7683"
+                                                                       FontFamily="Consolas" FontSize="10"
+                                                                       TextAlignment="Right"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- footer -->
+                            <TextBlock x:Name="Footer" Grid.Row="5" Margin="2,8,2,0"
+                                       Style="{StaticResource Label}" Text="Drobo Dashboard REBORN"/>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- ================= ALERTS ================= -->
+                <!-- Its own tab, not a dashboard widget — the header carries a dot and
+                     bold text only while something's active (see
+                     MainWindow.UpdateAlertsTabIndicator); calm and plain otherwise. -->
+                <TabItem x:Name="TabAlerts">
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="AlertsDot" Width="7" Height="7" Margin="0,0,6,0"
+                                     VerticalAlignment="Center" Fill="#E2564B" Visibility="Collapsed"/>
+                            <TextBlock x:Name="AlertsTabText" Text="ALERTS"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <TextBlock x:Name="AlertsError" Text="" FontFamily="Consolas" FontSize="11"
+                                       Foreground="#8B93A1" TextWrapping="Wrap" Visibility="Collapsed"
+                                       Margin="0,0,0,12"/>
+
+                            <TextBlock Text="ACTIVE" Style="{StaticResource Label}" Margin="0,0,0,8"/>
+                            <TextBlock x:Name="ActiveAlertsEmpty" Text="No problems reported."
+                                       FontFamily="Consolas" FontSize="12" Foreground="#46C07A"
+                                       Visibility="Collapsed" Margin="0,0,0,16"/>
+                            <ItemsControl x:Name="ActiveAlertsList" Margin="0,0,0,20">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#161B21" BorderBrush="#262E37" BorderThickness="1"
+                                                CornerRadius="4" Padding="12,10" Margin="0,0,0,8">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border CornerRadius="8" Padding="8,1" Background="{Binding ChipBackground}">
+                                                        <TextBlock Text="{Binding SeverityText}" FontFamily="Consolas"
+                                                                   FontSize="10" Foreground="{Binding SeverityBrush}"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding Since}" Style="{StaticResource Label}"
+                                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Message}" FontFamily="Consolas" FontSize="13"
+                                                           TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="RESOLVED" Style="{StaticResource Label}" Margin="0,0,0,8"/>
+                            <TextBlock x:Name="ResolvedAlertsEmpty" Text="Nothing resolved yet."
+                                       FontFamily="Consolas" FontSize="12" Foreground="#6B7683"
+                                       Visibility="Collapsed"/>
+                            <ItemsControl x:Name="ResolvedAlertsList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- same shape as an active entry, dimmed a touch, plus when it cleared -->
+                                        <Border Background="#161B21" BorderBrush="#262E37" BorderThickness="1"
+                                                CornerRadius="4" Padding="12,10" Margin="0,0,0,8" Opacity="0.75">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border CornerRadius="8" Padding="8,1" Background="{Binding ChipBackground}">
+                                                        <TextBlock Text="{Binding SeverityText}" FontFamily="Consolas"
+                                                                   FontSize="10" Foreground="{Binding SeverityBrush}"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding Since}" Style="{StaticResource Label}"
+                                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                    <TextBlock Text="{Binding ClearedText}" Style="{StaticResource Label}"
+                                                               Foreground="#46C07A" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Message}" FontFamily="Consolas" FontSize="13"
+                                                           TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- ================= SHARES ================= -->
+                <TabItem x:Name="TabShares" Header="SHARES">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- guest-logon explanation: a Windows policy change, not a fault.
+                                 Headline shown bold, separate from the detail sentence beneath
+                                 it — both come straight from the agent's advice.headline/detail
+                                 (see shares.py's access_advice), never reworded here. -->
+                            <Border x:Name="GuestAdviceBox" Grid.Row="0" Style="{StaticResource InfoStrip}"
+                                    Visibility="Collapsed">
+                                <DockPanel LastChildFill="True">
+                                    <Border DockPanel.Dock="Left" CornerRadius="8" Padding="8,1" Background="#0D1116"
+                                            VerticalAlignment="Top" Margin="0,1,10,0">
+                                        <TextBlock Text="INFO" FontFamily="Consolas" FontSize="10" Foreground="#2C7BC4"/>
+                                    </Border>
+                                    <StackPanel>
+                                        <TextBlock x:Name="GuestAdviceHeadline" TextWrapping="Wrap" FontSize="12"
+                                                   FontWeight="SemiBold" Foreground="#B9D3E8"/>
+                                        <TextBlock x:Name="GuestAdviceDetail" TextWrapping="Wrap" FontSize="12"
+                                                   Foreground="#B9D3E8" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- link-speed warning: this device is running ~10x slower than it should.
+                                 The headline sentence here is static, matching exactly what the web
+                                 dashboard synthesizes for the same case (webui.py's notice() call for
+                                 sh.link) — the agent's link object itself carries only "note", no
+                                 headline of its own. -->
+                            <Border x:Name="LinkWarningBox" Grid.Row="1" Style="{StaticResource WarnStrip}"
+                                    Visibility="Collapsed">
+                                <DockPanel LastChildFill="True">
+                                    <Border DockPanel.Dock="Left" CornerRadius="8" Padding="8,1" Background="#0D1116"
+                                            VerticalAlignment="Top" Margin="0,1,10,0">
+                                        <TextBlock Text="LINK" FontFamily="Consolas" FontSize="10" Foreground="#E9A83C"/>
+                                    </Border>
+                                    <StackPanel>
+                                        <TextBlock Text="This Drobo's network is running slowly." TextWrapping="Wrap"
+                                                   FontSize="12" FontWeight="SemiBold" Foreground="#E9C98A"/>
+                                        <TextBlock x:Name="LinkWarning" TextWrapping="Wrap" FontSize="12"
+                                                   Foreground="#E9C98A" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+
+                            <TextBlock x:Name="SharesError" Grid.Row="2" Text="" FontFamily="Consolas" FontSize="11"
+                                       Foreground="#8B93A1" TextWrapping="Wrap" Visibility="Collapsed"
+                                       Margin="0,0,0,10"/>
+
+                            <Border Grid.Row="3" Style="{StaticResource Card}" Padding="14">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Top" Text="SHARES" Style="{StaticResource Label}"
+                                               Margin="0,0,0,10"/>
+                                    <TextBlock x:Name="SharesEmpty" DockPanel.Dock="Top"
+                                               Text="Connect to the agent to see shares." FontFamily="Consolas" FontSize="12"
+                                               Foreground="#6B7683" Visibility="Collapsed" Margin="0,0,0,4"/>
+                                    <ItemsControl x:Name="Shares">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#0D1116" BorderBrush="#262E37" BorderThickness="1"
+                                                        CornerRadius="3" Padding="12,10" Margin="0,0,0,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"/>
+                                                                <Border Background="#22262E" CornerRadius="8" Padding="7,1"
+                                                                        Margin="10,0,0,0" Visibility="{Binding TimeMachineVisibility}">
+                                                                    <TextBlock Text="TIME MACHINE" FontFamily="Consolas" FontSize="9"
+                                                                               Foreground="#8B93A1"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Unc}" FontFamily="Consolas" FontSize="11"
+                                                                       Foreground="#6B7683" Margin="0,3,0,0"/>
+                                                            <TextBlock Text="{Binding ConnectionText}" FontFamily="Consolas" FontSize="11"
+                                                                       Foreground="#8B93A1" Margin="0,3,0,0"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                            <Button Content="Open" Style="{StaticResource PrimaryButton}"
+                                                                    Margin="0,0,8,0" Click="ShareOpen_Click"/>
+                                                            <!-- Disabled only when the Drobo is KNOWN to have no user
+                                                                 accounts; the tooltip then says why, so the greying is
+                                                                 not a mystery. See ShareRow.CanSignIn. -->
+                                                            <Button Content="Connect as…" Style="{StaticResource SecondaryButton}"
+                                                                    Margin="0,0,8,0" Click="ShareConnectAs_Click"
+                                                                    IsEnabled="{Binding CanSignIn}"
+                                                                    ToolTipService.ShowOnDisabled="True"
+                                                                    ToolTip="{Binding SignInBlockedReason}"/>
+                                                            <Button Content="Disconnect" Style="{StaticResource SecondaryButton}"
+                                                                    IsEnabled="{Binding IsConnected}" Click="ShareDisconnect_Click"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </DockPanel>
+                            </Border>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- ================= SETTINGS ================= -->
+                <!-- Read-only view of the Drobo's own network configuration.
+                     This phase of the project never writes to the device (see
+                     the read-only rule in the project constraints), so there
+                     is nothing here to edit — only to show. Fetched on
+                     demand via the Refresh button, not on the 10s poll: this
+                     is a second connection to the command port, and the
+                     command port has been measured to stop answering after
+                     heavy use (see docs/command-surface.md), while
+                     configuration itself almost never changes. -->
+                <TabItem x:Name="TabSettings" Header="SETTINGS">
+                    <!-- Two sub-tabs. THE DROBO (what the device itself reports,
+                         read-only) and PREFERENCES (how this app behaves, which is
+                         ours to change). Keeping both on one page made it ambiguous
+                         which settings belonged to the hardware and which to the
+                         software, which is a real question when one of them cannot be
+                         changed from here at all. -->
+                    <TabControl x:Name="SettingsTabs" Background="Transparent" BorderThickness="0">
+                        <TabItem x:Name="SettingsTabDevice" Header="THE DROBO">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- read-only notice + the on-demand refresh -->
+                                <Border Grid.Row="0" Style="{StaticResource InfoStrip}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                            <Border CornerRadius="8" Padding="8,1" Background="#0D1116"
+                                                    VerticalAlignment="Top" Margin="0,1,10,0">
+                                                <TextBlock Text="INFO" FontFamily="Consolas" FontSize="10" Foreground="#2C7BC4"/>
+                                            </Border>
+                                            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="#B9D3E8"
+                                                       Text="Read-only. This shows the Drobo's own configuration -- this app never changes it."/>
+                                        </StackPanel>
+                                        <Button x:Name="SettingsRefreshBtn" Grid.Column="1" Content="Refresh"
+                                                Style="{StaticResource SecondaryButton}" VerticalAlignment="Center"
+                                                Margin="12,0,0,0" Click="SettingsRefreshBtn_Click"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- link-speed warning: identical wording to the Shares tab's,
+                                     because both come straight from the agent's /api/shares
+                                     "link" field rather than being reworded here -->
+                                <Border x:Name="SettingsLinkWarningBox" Grid.Row="1" Style="{StaticResource WarnStrip}"
+                                        Visibility="Collapsed">
+                                    <DockPanel LastChildFill="True">
+                                        <Border DockPanel.Dock="Left" CornerRadius="8" Padding="8,1" Background="#0D1116"
+                                                VerticalAlignment="Top" Margin="0,1,10,0">
+                                            <TextBlock Text="LINK" FontFamily="Consolas" FontSize="10" Foreground="#E9A83C"/>
+                                        </Border>
+                                        <StackPanel>
+                                            <TextBlock Text="This Drobo's network is running slowly." TextWrapping="Wrap"
+                                                       FontSize="12" FontWeight="SemiBold" Foreground="#E9C98A"/>
+                                            <TextBlock x:Name="SettingsLinkWarning" TextWrapping="Wrap" FontSize="12"
+                                                       Foreground="#E9C98A" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+
+                                <TextBlock x:Name="SettingsError" Grid.Row="2" Text="" FontFamily="Consolas" FontSize="11"
+                                           Foreground="#E9C98A" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,10"/>
+
+                                <Border Grid.Row="3" Style="{StaticResource Card}" Padding="14">
+                                    <StackPanel>
+                                        <TextBlock Text="NETWORK CONFIGURATION" Style="{StaticResource Label}" Margin="0,0,0,10"/>
+                                        <TextBlock x:Name="SettingsEmpty" FontFamily="Consolas" FontSize="12" Foreground="#6B7683"
+                                                   Text="Press Refresh to read the Drobo's current network settings."/>
+                                        <StackPanel x:Name="SettingsGrid" Visibility="Collapsed">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="Device name" Style="{StaticResource Label}" Width="130"/>
+                                                <TextBlock x:Name="SettingsDeviceName" Text="—" FontFamily="Consolas" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="Workgroup" Style="{StaticResource Label}" Width="130"/>
+                                                <TextBlock x:Name="SettingsWorkgroup" Text="—" FontFamily="Consolas" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="IP address" Style="{StaticResource Label}" Width="130"/>
+                                                <TextBlock x:Name="SettingsIp" Text="—" FontFamily="Consolas" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="Subnet" Style="{StaticResource Label}" Width="130"/>
+                                                <TextBlock x:Name="SettingsSubnet" Text="—" FontFamily="Consolas" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="Gateway" Style="{StaticResource Label}" Width="130"/>
+                                                <TextBlock x:Name="SettingsGateway" Text="—" FontFamily="Consolas" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="DNS servers" Style="{StaticResource Label}" Width="130"/>
+                                                <TextBlock x:Name="SettingsDns" Text="—" FontFamily="Consolas" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="Jumbo frames" Style="{StaticResource Label}" Width="130"/>
+                                                <TextBlock x:Name="SettingsJumbo" Text="—" FontFamily="Consolas" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Port" Style="{StaticResource Label}" Width="130"/>
+                                                <TextBlock x:Name="SettingsPort" Text="—" FontFamily="Consolas" FontSize="13"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </ScrollViewer>
+                        </TabItem>
+
+                        <!-- PREFERENCES: this app's own behaviour, modelled on the
+                             original Drobo Dashboard's preferences window. -->
+                        <TabItem x:Name="SettingsTabPrefs" Header="PREFERENCES">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="2,12,2,2">
+
+                                    <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="SYSTEM TRAY" Style="{StaticResource Label}" Margin="0,0,0,8"/>
+                                            <CheckBox x:Name="PrefCloseToTray" Foreground="#E6EBF0" Margin="0,0,0,4"
+                                                      Content="Closing the window keeps the app running in the tray"
+                                                      Checked="PrefCloseToTray_Changed" Unchecked="PrefCloseToTray_Changed"/>
+                                            <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="22,0,0,10"
+                                                       Text="Off by default: the X really closes it. The tray icon is present either way and shows array health at a glance."/>
+                                            <TextBlock Text="LANGUAGE" Style="{StaticResource Label}" Margin="0,4,0,4"/>
+                                            <ComboBox x:Name="PrefLanguage" Width="240" HorizontalAlignment="Left" IsEnabled="False"
+                                                      Background="#0D1116" Foreground="#E6EBF0">
+                                                <ComboBoxItem Content="English (only language available)" IsSelected="True"/>
+                                            </ComboBox>
+                                            <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                       Text="The original Dashboard shipped in several languages. This one is English-only so far. The box is disabled rather than hidden so it is clear the setting exists and simply has nothing else to offer yet."/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="ON-SCREEN ALERTS" Style="{StaticResource Label}" Margin="0,0,0,8"/>
+                                            <TextBlock Style="{StaticResource Label}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"
+                                                       Text="Desktop notifications, shown only when an alert becomes active - never during normal use, and never twice for the same standing problem."/>
+                                            <CheckBox x:Name="PrefNotifyMaster" Content="Notify me when something is wrong"
+                                                      Foreground="#E6EBF0" Margin="0,0,0,4"
+                                                      Checked="PrefNotifyMaster_Changed" Unchecked="PrefNotifyMaster_Changed"/>
+                                            <ItemsControl x:Name="PrefNotifyList" Margin="22,6,0,0" Focusable="False">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Margin="0,0,0,8">
+                                                            <CheckBox Content="{Binding Label}" IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                                                      IsEnabled="{Binding MasterOn}" Foreground="#E6EBF0"
+                                                                      Checked="PrefNotifyCategory_Changed"
+                                                                      Unchecked="PrefNotifyCategory_Changed"/>
+                                                            <TextBlock Text="{Binding Description}" Style="{StaticResource Label}"
+                                                                       FontSize="11" TextWrapping="Wrap" Margin="22,1,0,0"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                       Text="Alerts always appear on the Alerts tab whether or not these are on."/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="EMAIL ALERTS" Style="{StaticResource Label}" Margin="0,0,0,8"/>
+                                            <TextBlock x:Name="PrefEmailStatus" Style="{StaticResource Label}" FontSize="12" TextWrapping="Wrap"
+                                                       Text="Checking what this agent supports..."/>
+                                            <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                       Text="The original Dashboard could email you when a drive failed. This is configured in the agent's config.json, so the password never passes through this window and is never written to this app's settings file."/>
+                                            <Button x:Name="PrefEmailTestBtn" Content="Send a test email" Margin="0,10,0,0"
+                                                    Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                                                    IsEnabled="False" Click="PrefEmailTest_Click"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="UPDATES" Style="{StaticResource Label}" VerticalAlignment="Center"/>
+                                                <Border CornerRadius="8" Padding="8,1" Background="#12202E" Margin="10,0,0,0">
+                                                    <TextBlock Text="COMING SOON" FontFamily="Consolas" FontSize="9" Foreground="#5C8DFF"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock x:Name="PrefUpdateStatus" Style="{StaticResource Label}" FontSize="12" TextWrapping="Wrap"
+                                                       Text="Checking..."/>
+                                            <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                       Text="The machinery is built and switched off. It contacts nothing until a release feed is configured, and it will only ever tell you an update exists - downloading and installing stay your decision."/>
+                                        </StackPanel>
+                                    </Border>
+
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+
+                    </TabControl>
+                </TabItem>
+
+                <!-- ================= TOOLS ================= -->
+                <!-- Mostly things that are safe against a read-only-phase agent
+                     and actually work today. Identify (below) is the one
+                     exception, and the first control in the app's history that
+                     reaches out and changes something on the hardware — see
+                     the note on IdentifyBtn_Click in MainWindow.xaml.cs. -->
+                <TabItem x:Name="TabTools" Header="TOOLS">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- version info: the app's own version is otherwise shown
+                                 nowhere, which makes a support question unanswerable -->
+                            <Border Grid.Row="0" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="VERSION" Style="{StaticResource Label}" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="ToolsAppVersion" Text="Drobo Dashboard REBORN" FontFamily="Consolas" FontSize="13"/>
+                                    <TextBlock x:Name="ToolsAgentVersion" Text="Agent: checking…" FontFamily="Consolas" FontSize="12"
+                                               Foreground="#6B7683" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- actions: safe, read-only, and each does something real today -->
+                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="ACTIONS" Style="{StaticResource Label}" Margin="0,0,0,10"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Open web dashboard" Style="{StaticResource SecondaryButton}"
+                                                Margin="0,0,8,0" Click="OpenWebDashboard_Click"/>
+                                        <Button Content="Copy diagnostics" Style="{StaticResource SecondaryButton}"
+                                                Margin="0,0,8,0" Click="CopyDiagnostics_Click"/>
+                                        <Button x:Name="OpenGuideBtn" Content="Open the guide" Style="{StaticResource SecondaryButton}"
+                                                Click="OpenGuide_Click"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="ToolsActionStatus" Text="" FontFamily="Consolas" FontSize="11"
+                                               Foreground="#6B7683" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,10,0,0"/>
+                                    <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
+                                               Text="Copy diagnostics includes your drive serial numbers, whether it lands on the clipboard or in a file -- check where it ends up before sharing it anywhere public."/>
+
+                                    <!-- Kept beside the button it configures, so the setting and its
+                                         effect read as one unit — see CopyDiagnostics_Click in
+                                         MainWindow.xaml.cs. -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="When copying diagnostics:" Style="{StaticResource Label}"
+                                                   FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <ComboBox x:Name="DiagnosticsPrefCombo" Width="200" Padding="6,3"
+                                                  Background="#0D1116" Foreground="#E6EBF0" BorderBrush="#262E37"
+                                                  SelectionChanged="DiagnosticsPrefCombo_SelectionChanged">
+                                            <ComboBoxItem Content="Ask each time" Tag="ask"/>
+                                            <ComboBoxItem Content="Always copy to clipboard" Tag="clipboard"/>
+                                            <ComboBoxItem Content="Always save to a file" Tag="file"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- IDENTIFY: the one control in the whole app that reaches out and
+                                 changes something on the hardware, so it gets a card of its own
+                                 rather than sitting alongside the read-only Actions row above.
+                                 Not scary, though — it only flashes the front lights, and it
+                                 stops on its own; see IdentifyBtn_Click in the code-behind for
+                                 the full reasoning. The plain-English line below is shown up
+                                 front, before anyone clicks anything, on purpose — the owner
+                                 should never have to click first to find out what a button does. -->
+                            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="IDENTIFY" Style="{StaticResource Label}" Margin="0,0,0,10"/>
+                                    <!-- Wording corrected 2026-08-06. This used to say the lights
+                                         "stop on its own", which described a brief flash. Drobo
+                                         Dashboard's own warning string says they blink CONTINUOUSLY
+                                         for 15 minutes and the same button stops them — so it is a
+                                         mode, and a mode needs a way out. Hence the Stop button. -->
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Margin="0,0,0,10"
+                                               Text="Blinks the Drobo's front lights so you can tell which box is which. The original Dashboard blinked for 15 minutes, so press Stop once you have found it. Nothing else on the device changes."/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="IdentifyBtn" Content="Identify" Style="{StaticResource PrimaryButton}"
+                                                Padding="14,5" Click="IdentifyBtn_Click"/>
+                                        <Button x:Name="IdentifyStopBtn" Content="Stop" Style="{StaticResource SecondaryButton}"
+                                                Padding="14,5" Margin="8,0,0,0" Click="IdentifyStopBtn_Click"/>
+                                    </StackPanel>
+                                    <!-- Collapsed until the first click resolves, then shows either
+                                         the agent's own success message (with a SIMULATED chip when
+                                         this is a demo, never left ambiguous) or its error text. -->
+                                    <StackPanel x:Name="IdentifyResultBox" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
+                                        <Border x:Name="IdentifySimulatedBadge" CornerRadius="8" Padding="7,1" Background="#12202E"
+                                                VerticalAlignment="Center" Margin="0,0,8,0" Visibility="Collapsed">
+                                            <TextBlock Text="SIMULATED" FontFamily="Consolas" FontSize="9" Foreground="#2C7BC4"/>
+                                        </Border>
+                                        <TextBlock x:Name="IdentifyResultText" FontFamily="Consolas" FontSize="12"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <!-- LED brightness, read from the same lights this button
+                                         flashes — which is why it lives here rather than on its
+                                         own card. eCmdGetDimming has answered since 2026-07-26
+                                         and had no way of reaching anyone until 2026-07-28.
+                                         Read-only: SETTING it needs parameters the firmware
+                                         never documents, and this project does not guess those. -->
+                                    <Border Background="#0D1116" BorderBrush="#262E37" BorderThickness="1"
+                                            CornerRadius="3" Padding="10,8" Margin="0,12,0,0">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="LIGHT BRIGHTNESS" Style="{StaticResource Label}"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="DimmingValue" Text="&#8212;" FontFamily="Consolas"
+                                                           FontSize="14" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                                <Button x:Name="ReadLedsBtn" Content="Read" Style="{StaticResource SecondaryButton}"
+                                                        Padding="10,3" Margin="12,0,0,0" Click="ReadLeds_Click"/>
+                                            </StackPanel>
+                                            <TextBlock x:Name="DimmingNote" Style="{StaticResource Label}" FontSize="11"
+                                                       TextWrapping="Wrap" Margin="0,6,0,0"
+                                                       Text="Press Read to ask the Drobo how bright its lights are set."/>
+                                            <!-- Only ever visible if the device says it IS in demo mode.
+                                                 A unit left in shop-display mode reports capacity it does
+                                                 not have, which would make every number in this app wrong
+                                                 with nothing else to catch it. -->
+                                            <Border x:Name="DemoModeBox" Style="{StaticResource WarnStrip}"
+                                                    Margin="0,10,0,0" Visibility="Collapsed">
+                                                <TextBlock x:Name="DemoModeText" TextWrapping="Wrap" FontSize="12"
+                                                           Foreground="#E9C98A"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- DROBOAPPS: software installed ON the Drobo (Python, SSH,
+                                 DroboPix) — nothing to do with the drive bays or shares above.
+                                 Fetched on demand via Refresh, not the 10s poll, for the same
+                                 reason the SETTINGS tab's network config is on-demand: this is a
+                                 second connection to the command port, and the app list changes
+                                 about never. -->
+                            <Border Grid.Row="3" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                            <TextBlock Text="DROBOAPPS" Style="{StaticResource Label}" VerticalAlignment="Center"/>
+                                            <!-- quiet, once — not repeated per app row -->
+                                            <TextBlock x:Name="DroboAppsSdk" Style="{StaticResource Label}"
+                                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                        </StackPanel>
+                                        <Button x:Name="DroboAppsRefreshBtn" Grid.Column="1" Content="Refresh"
+                                                Style="{StaticResource SecondaryButton}" Click="DroboAppsRefreshBtn_Click"/>
+                                    </Grid>
+
+                                    <TextBlock x:Name="DroboAppsError" FontFamily="Consolas" FontSize="11"
+                                               Foreground="#E9C98A" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,10"/>
+
+                                    <TextBlock x:Name="DroboAppsEmpty" FontFamily="Consolas" FontSize="12" Foreground="#6B7683"
+                                               Text="Press Refresh to see what's installed on your Drobo."/>
+
+                                    <ItemsControl x:Name="DroboAppsList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#0D1116" BorderBrush="#262E37" BorderThickness="1"
+                                                        CornerRadius="3" Padding="10,8" Margin="0,0,0,6">
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"/>
+                                                            <TextBlock Text="{Binding Version}" FontFamily="Consolas" FontSize="11"
+                                                                       Foreground="#6B7683" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                            <Border CornerRadius="8" Padding="7,1" Margin="10,0,0,0"
+                                                                    VerticalAlignment="Center" Background="{Binding RunningChipBackground}">
+                                                                <TextBlock Text="{Binding RunningText}" FontFamily="Consolas" FontSize="9"
+                                                                           Foreground="{Binding RunningBrush}"/>
+                                                            </Border>
+                                                            <Border CornerRadius="8" Padding="7,1" Margin="8,0,0,0"
+                                                                    VerticalAlignment="Center" Background="#22262E"
+                                                                    Visibility="{Binding WebUiVisibility}">
+                                                                <TextBlock Text="WEB UI" FontFamily="Consolas" FontSize="9" Foreground="#8B93A1"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Description}" FontSize="12" Foreground="#8B93A1"
+                                                                   TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                                        <TextBlock Text="{Binding Status}" FontFamily="Consolas" FontSize="11"
+                                                                   Foreground="#6B7683" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                                   Visibility="{Binding StatusVisibility}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- The tray/close behaviour moved to SETTINGS > PREFERENCES,
+                                 alongside the language and notification settings it belongs
+                                 with. -->
+
+                            <!-- honest, not a row of disabled buttons pretending to be nearly ready -->
+                            <!-- BACKUP: copy the Drobo to an external drive.
+                                 The 5N has no USB port, so the drive plugs into THIS PC and the
+                                 PC copies across the network. Robocopy does the work; see
+                                 agent/drobo_agent/backup.py for why, and for why mirroring is
+                                 opt-in.
+
+                                 The two-step shape here mirrors the API deliberately. "Check"
+                                 plans and copies nothing; "Start" is disabled until a plan has
+                                 come back allowed, so nobody can write to a destination the
+                                 agent has not first agreed to. -->
+                            <Border Grid.Row="4" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="BACK UP TO AN EXTERNAL DRIVE" Style="{StaticResource Label}" Margin="0,0,0,8"/>
+                                    <TextBlock Style="{StaticResource Label}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12"
+                                               Text="Copies a Drobo share to a folder on a drive plugged into this PC. Your Drobo is a network device with no USB socket, so this PC does the copying."/>
+
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="FROM" Style="{StaticResource Label}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="BackupSource" Grid.Column="1" Background="#0D1116" Foreground="#E6EBF0"
+                                                 BorderBrush="#262E37" Padding="6,4" VerticalContentAlignment="Center"
+                                                 TextChanged="BackupPathChanged"/>
+                                        <Button x:Name="BackupPickSourceBtn" Grid.Column="2" Content="Pick a share"
+                                                Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                                                Click="BackupPickSource_Click"/>
+                                    </Grid>
+
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="TO" Style="{StaticResource Label}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="BackupDest" Grid.Column="1" Background="#0D1116" Foreground="#E6EBF0"
+                                                 BorderBrush="#262E37" Padding="6,4" VerticalContentAlignment="Center"
+                                                 TextChanged="BackupPathChanged"/>
+                                        <Button x:Name="BackupPickDestBtn" Grid.Column="2" Content="Browse..."
+                                                Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                                                Click="BackupPickDest_Click"/>
+                                    </Grid>
+
+                                    <CheckBox x:Name="BackupMirror" Foreground="#E6EBF0" Margin="0,0,0,2"
+                                              Content="Mirror (delete things from the backup that are gone from the Drobo)"
+                                              Checked="BackupPathChanged" Unchecked="BackupPathChanged"/>
+                                    <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="22,0,0,12"
+                                               Text="Leave this off unless you mean it. With it on, deleting a photo from the Drobo by accident and then backing up removes it from the backup too, which is the copy that would have saved you."/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <Button x:Name="BackupCheckBtn" Content="Check what this will do"
+                                                Style="{StaticResource SecondaryButton}" Padding="12,5"
+                                                Click="BackupCheck_Click"/>
+                                        <Button x:Name="BackupStartBtn" Content="Start backup"
+                                                Style="{StaticResource PrimaryButton}" Padding="14,5" Margin="8,0,0,0"
+                                                IsEnabled="False" Click="BackupStart_Click"/>
+                                    </StackPanel>
+
+                                    <!-- Refusals and warnings from the agent's own plan, shown
+                                         verbatim: it is the thing that decides, so it should be
+                                         the thing that explains. -->
+                                    <Border x:Name="BackupPlanBox" Style="{StaticResource WarnStrip}" Visibility="Collapsed">
+                                        <TextBlock x:Name="BackupPlanText" TextWrapping="Wrap" FontSize="12" Foreground="#E9C98A"/>
+                                    </Border>
+
+                                    <TextBlock x:Name="BackupStatus" Style="{StaticResource Label}" FontSize="12"
+                                               TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Text="Nothing has been backed up yet."/>
+                                    <ProgressBar x:Name="BackupBar" Height="3" IsIndeterminate="True" Margin="0,8,0,0"
+                                                 Background="#22262E" Foreground="#2C7BC4" BorderThickness="0"
+                                                 Visibility="Collapsed"/>
+                                    <TextBlock x:Name="BackupTail" FontFamily="Consolas" FontSize="10" Foreground="#6B7683"
+                                               TextWrapping="NoWrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Row="5" Style="{StaticResource Card}" Padding="14">
+                                <TextBlock Style="{StaticResource Label}" FontSize="12" TextWrapping="Wrap"
+                                           Text="Standby and Restart aren't here yet. Identify above is the only control so far that sends your Drobo a command -- everything else on this tab still only reads."/>
+                            </Border>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+
+            </TabControl>
+        </Grid>
+    </Grid>
+</Window>

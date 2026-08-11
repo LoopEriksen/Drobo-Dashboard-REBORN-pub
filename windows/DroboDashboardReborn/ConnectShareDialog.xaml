@@ -1,0 +1,58 @@
+<Window x:Class="DroboDashboardReborn.ConnectShareDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Connect to share"
+        Width="420" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="#0D1116" Foreground="#E6EBF0"
+        FontFamily="Segoe UI" FontSize="14"
+        UseLayoutRounding="True">
+
+    <Window.Resources>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#6B7683"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+        </Style>
+        <Style x:Key="Field" TargetType="Control">
+            <Setter Property="Background" Value="#0D1116"/>
+            <Setter Property="Foreground" Value="#E6EBF0"/>
+            <Setter Property="BorderBrush" Value="#262E37"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="0,4,0,12"/>
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="20">
+        <TextBlock x:Name="Header" Text="Connect to share" FontSize="17" FontWeight="SemiBold"/>
+        <TextBlock x:Name="Sub" Style="{StaticResource Label}" Margin="0,2,0,16" TextWrapping="Wrap"/>
+
+        <TextBlock Text="DROBO USERNAME" Style="{StaticResource Label}"/>
+        <TextBox x:Name="UsernameBox" Style="{StaticResource Field}"/>
+
+        <TextBlock Text="DROBO PASSWORD" Style="{StaticResource Label}"/>
+        <PasswordBox x:Name="PasswordInput" Style="{StaticResource Field}"/>
+
+        <TextBlock Text="DRIVE LETTER" Style="{StaticResource Label}"/>
+        <ComboBox x:Name="DriveLetterBox" Margin="0,4,0,12" Padding="8,6"
+                  Background="#0D1116" Foreground="#E6EBF0" BorderBrush="#262E37"/>
+
+        <CheckBox x:Name="Remember" Content="Remember this in Windows"
+                  Foreground="#E6EBF0" Margin="0,0,0,4"/>
+        <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,0,0,16"
+                   Text="Stores the login in Windows Credential Manager so it reconnects on its own next time. Left unchecked, the connection lasts only for this Windows sign-in session -- either way, this app never stores your password."/>
+
+        <TextBlock x:Name="ErrorText" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                   Foreground="#E2564B" Background="#301714" Padding="10,8"
+                   Visibility="Collapsed" Margin="0,0,0,16"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="CancelBtn" Content="Cancel" Padding="14,6" Margin="0,0,8,0"
+                    Background="#22262E" Foreground="#E6EBF0" BorderThickness="1"
+                    BorderBrush="#39424D" Cursor="Hand" Click="Cancel_Click" IsCancel="True"/>
+            <Button x:Name="ConnectBtn" Content="Connect" Padding="14,6"
+                    Background="#2C7BC4" Foreground="White" BorderThickness="0"
+                    Cursor="Hand" Click="Connect_Click" IsDefault="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
