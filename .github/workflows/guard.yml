@@ -1,0 +1,83 @@
+# CI: refuse any push/PR that carries a secret or personal data.
+#
+# WHY, given this repo already has a pre-commit hook: the hook is installed
+# per-clone by scripts/install-hooks.sh. Until someone runs that, it does
+# nothing — and a fresh clone, a second machine, the GitHub web editor, or a
+# single `git commit --no-verify` all bypass it even after they have. Until
+# this workflow existed, every repo here carried the guard and none of them
+# enforced it; the scanner was advice, not a gate. This job is the backstop
+# that cannot be skipped locally.
+#
+# It runs the repo's own scripts/scan_for_pii.py rather than a second,
+# separately-drifting copy of the rules, so what CI blocks and what the hook
+# blocks stay the same thing by construction.
+name: guard
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Block credential FILES from being tracked
+        shell: bash
+        run: |
+          # .env.example / .env.sample / .env.template are the documented
+          # shape of the config, carry no values, and are meant to be
+          # committed — excluded so the check does not punish good practice.
+          bad=$(git ls-files \
+            | grep -iE '(^|/)\.env($|\.)|credentials\.json$|_credentials\.txt$|\.(key|pem|pfx|p12)$' \
+            | grep -viE '\.env\.(example|sample|template)$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Credential-bearing files are tracked:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "No credential files tracked."
+
+      - name: Scan tracked content for secret material
+        shell: bash
+        run: |
+          # Kept specific, so ordinary code that merely mentions "api_key" in
+          # a comment does not trip it. Excludes the guard's own files, which
+          # legitimately contain these patterns.
+          fail=0
+          ex=(':!scripts/*' ':!.github/workflows/guard.yml')
+
+          if git grep -nIE 'sk-ant-[A-Za-z0-9_-]{8,}' -- . "${ex[@]}"; then
+            echo "::error::Anthropic API key found in tracked content."
+            fail=1
+          fi
+
+          if git grep -nIE '(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})' -- . "${ex[@]}"; then
+            echo "::error::A vendor API key format was found in tracked content."
+            fail=1
+          fi
+
+          if git grep -nIE 'BEGIN [A-Z ]*PRIVATE KEY' -- . "${ex[@]}"; then
+            echo "::error::A PRIVATE KEY block was found in tracked content."
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Secret scan FAILED. Do not merge."
+            exit 1
+          fi
+          echo "Secret scan clean."
+
+      - name: PII scan (tracked files)
+        shell: bash
+        run: |
+          # --tracked, not a working-tree walk: a leak only matters once it
+          # is committed, and on a dev machine the walk also reads gitignored
+          # build output (obj/, bin/), which buried real hits under hundreds
+          # of machine paths from the local toolchain.
+          python scripts/scan_for_pii.py --tracked

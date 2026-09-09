@@ -1,0 +1,29 @@
+# EditorConfig — https://editorconfig.org
+# Keeps indentation and line endings consistent across editors so a whitespace
+# change never rides along in an unrelated diff.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Web and config files conventionally use two spaces.
+[*.{js,jsx,ts,tsx,json,jsonc,yml,yaml,css,scss,html,sql,lua,xml,xaml,csproj}]
+indent_size = 2
+
+# Two trailing spaces are a hard line break in Markdown — trimming them
+# silently reflows the rendered text, so leave them alone here.
+[*.md]
+trim_trailing_whitespace = false
+
+# Windows shells require CRLF: a .bat or .ps1 saved with LF can fail to parse
+# or mis-handle its last line when cmd.exe reads it.
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
+
+[Makefile]
+indent_style = tab
