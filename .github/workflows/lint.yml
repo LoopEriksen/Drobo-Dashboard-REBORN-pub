@@ -1,0 +1,41 @@
+# CI: on every push/PR, prove every Python module still compiles.
+#
+# This catches the class of break that is invisible until runtime — a syntax
+# error in a module nothing imports at startup, which sits green in review and
+# only surfaces when someone opens the feature that uses it.
+#
+# It deliberately does NOT install requirements: this gate answers "is the
+# source valid?", not "does the dependency stack resolve?". Keeping it
+# dependency-free means it stays fast and cannot go red because of an upstream
+# release, so a red run here always means we broke the code.
+name: lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile every tracked module
+        shell: bash
+        run: |
+          # Driven off `git ls-files` rather than a glob: globs missed
+          # subdirectories, and a package added later would silently fall
+          # outside the gate. vendor/ is third-party source we do not
+          # control and do not patch, so its style is not ours to enforce.
+          files=$(git ls-files '*.py' | grep -viE '(^|/)vendor/' || true)
+          if [ -z "$files" ]; then
+            echo "No tracked Python files."
+            exit 0
+          fi
+          echo "$files" | wc -l | xargs echo "Compiling modules:"
+          echo "$files" | tr '\n' '\0' | xargs -0 python -m py_compile
+          echo "All modules compile."

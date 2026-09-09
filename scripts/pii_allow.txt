@@ -1,0 +1,11 @@
+# Reviewed PII-scan exceptions for this repo.
+#
+# One regex per line, matched against the text the scanner flagged. Every
+# entry here is a hit somebody looked at and accepted, so keep them tight:
+# a loose pattern silently switches the check off for a whole class of leak.
+#
+# This file is the opposite of scripts/pii_patterns.local, which is private,
+# gitignored, and ADDS machine-specific patterns.
+
+# docs placeholders, not real accounts
+^C:[\\/]+Users[\\/]+<[a-z]+>$

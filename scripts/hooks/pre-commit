@@ -1,0 +1,119 @@
+#!/bin/sh
+# ============================================================
+# Drobo-Dashboard-REBORN-public pre-commit hook — blocks personal/identifying data
+# from ever being committed.
+#
+# Install it with:  sh scripts/install-hooks.sh   (or copy this
+# file to .git/hooks/pre-commit and make it executable).
+#
+# It scans the STAGED changes and refuses the commit if it finds:
+#   - a database file (*.db / *.sqlite*)
+#   - a real environment file (.env, but .env.example is allowed)
+#   - an absolute C:\Users\<name>\ path (leaks a Windows username)
+#   - an email address that is not a demo/example placeholder
+#   - anything matching your private patterns in
+#     scripts/pii_patterns.local (gitignored; optional)
+#
+# Reviewed exceptions live in scripts/pii_allow.txt and are honoured
+# here as well as by scripts/scan_for_pii.py and CI, so the same
+# content is accepted at every gate. When they disagreed, the answer
+# depended on which gate you happened to hit first.
+#
+# Deliberately GENERIC: it names no real person or username, so the
+# hook itself carries no identifying data. Put machine-specific
+# strings (your username, real name) in scripts/pii_patterns.local,
+# which is gitignored and never leaves your machine.
+# ============================================================
+set -e
+
+fail() {
+    echo ""
+    echo "  COMMIT BLOCKED by pre-commit hook (scripts/hooks/pre-commit)"
+    echo "  Reason: $1"
+    echo ""
+    echo "  Fix the flagged content (or unstage the file) and commit again."
+    echo "  If it is a reviewed exception, add a tight regex to"
+    echo "  scripts/pii_allow.txt so CI accepts it too."
+    echo "  Last resort: git commit --no-verify"
+    echo ""
+    exit 1
+}
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+ALLOW_FILE="$REPO_ROOT/scripts/pii_allow.txt"
+
+# Fold scripts/pii_allow.txt into one alternation. Blank lines and comments
+# are dropped; if nothing is left the filter stays empty, because an empty
+# grep pattern matches every line and would wave the whole check through.
+ALLOW_RE=""
+if [ -f "$ALLOW_FILE" ]; then
+    ALLOW_RE=$(grep -vE '^\s*(#|$)' "$ALLOW_FILE" | paste -sd '|' - || true)
+fi
+
+# Read candidate hits on stdin, print the ones no exception covers.
+drop_allowed() {
+    if [ -n "$ALLOW_RE" ]; then
+        grep -viE "$ALLOW_RE" || true
+    else
+        cat
+    fi
+}
+
+# 0. The commit AUTHOR email is published on every commit. Block real
+# addresses; allow GitHub no-reply and demo/example placeholders.
+author_email=$(git config user.email || true)
+case "$author_email" in
+    *@users.noreply.github.com|*@demo.com|*@example.com|*@example.org|*@example.net|*.example|"" ) : ;;
+    * ) fail "commit author email '$author_email' is a real address. Set a private identity for this repo, e.g.:
+      git config user.email \"YOURNAME@users.noreply.github.com\"" ;;
+esac
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+
+# 1. Block database files by name.
+db_hit=$(printf '%s\n' "$staged_files" | grep -iE '\.(db|sqlite|sqlite3)$' || true)
+[ -n "$db_hit" ] && fail "database file staged: $db_hit"
+
+# 2. Block real .env files (allow the committed templates).
+env_hit=$(printf '%s\n' "$staged_files" | grep -E '(^|/)\.env($|\.)' | grep -viE '\.env\.(example|sample|template)$' || true)
+[ -n "$env_hit" ] && fail "environment file staged: $env_hit"
+
+# 3. Content scan of the staged diff (added lines only).
+# Exclude the hook, the scanner and the allowlist: all three carry detection
+# rules or reviewed examples and would otherwise trip on their own text.
+added=$(git diff --cached --diff-filter=ACM -U0 \
+        -- . ':(exclude)scripts/hooks/pre-commit' ':(exclude)scripts/scan_for_pii.py' \
+             ':(exclude)scripts/pii_allow.txt' \
+        | grep '^+' | grep -v '^+++' || true)
+
+# Absolute Windows user path — leaks a username, and won't work for others.
+# The account segment is required: a bare "C:\Users\" names nobody, and
+# matching it flagged redaction patterns and truncated paths as leaks.
+bad_path=$(printf '%s\n' "$added" | sed 's/^+//' \
+           | grep -oiE 'C:[\\/]+Users[\\/]+[A-Za-z0-9._$%<>{}-]+' \
+           | drop_allowed || true)
+[ -n "$bad_path" ] && fail "absolute C:\\Users\\<name> path found in staged content (leaks a username): $bad_path"
+
+# 4. Any email that is not a placeholder or a reviewed exception.
+# Strip the leading diff '+' first so decorators like @app.get / @router.post
+# aren't misread as emails (the '+' would otherwise act as the local part).
+# Reserved domains follow RFC 2606/6761 — .test and .invalid are as safe in a
+# fixture as .example, and flagging them taught people to ignore the hook.
+emails=$(printf '%s\n' "$added" | sed 's/^+//' | grep -oiE '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}' || true)
+bad_email=$(printf '%s\n' "$emails" \
+            | grep -viE '@(demo\.com|example\.(com|org|net)|[a-z0-9.-]+\.(example|test|invalid|localhost))$' \
+            | drop_allowed || true)
+[ -n "$bad_email" ] && fail "non-demo email address found in staged content: $bad_email"
+
+# 5. Optional private patterns (gitignored — real name, username, etc.).
+LOCAL="$REPO_ROOT/scripts/pii_patterns.local"
+if [ -f "$LOCAL" ]; then
+    while IFS= read -r pat; do
+        [ -z "$pat" ] && continue
+        case "$pat" in \#*) continue ;; esac
+        printf '%s\n' "$added" | grep -qiE "$pat" \
+            && fail "private PII pattern matched (scripts/pii_patterns.local): $pat"
+    done < "$LOCAL"
+fi
+
+exit 0

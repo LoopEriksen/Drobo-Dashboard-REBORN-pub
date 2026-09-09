@@ -90,3 +90,6 @@ agent/config.json.*
 # The build's personal-identifier watchlist: literally a list of the strings
 # that must never be tracked, so tracking the list would defeat it.
 windows/installer-identifiers.local.txt
+
+# Machine-local PII pattern list for the pre-commit scanner (never shared).
+scripts/pii_patterns.local
