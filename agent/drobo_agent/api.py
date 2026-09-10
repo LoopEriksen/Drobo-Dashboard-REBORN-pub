@@ -136,6 +136,11 @@ class _Handler(BaseHTTPRequestHandler):
     server_version = f"DroboAgent/{VERSION}"
     protocol_version = "HTTP/1.1"
 
+    # Socket timeout for one request. Without it, a client that sends a
+    # Content-Length and then stalls holds a handler thread for ever. Per
+    # recv/send call, not per request, so a slow phone upload is unaffected.
+    timeout = 60
+
     # /api/droboconfig opens a second connection to the device's command port.
     # Bounded so a slow or sulking Drobo can't stall an API worker thread.
     CONFIG_TIMEOUT = 8.0

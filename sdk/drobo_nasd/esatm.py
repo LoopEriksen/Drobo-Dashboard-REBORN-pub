@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 import socket
 import struct
+import time
 import xml.etree.ElementTree as ET
 
 from .models import (
@@ -55,9 +56,33 @@ class FrameError(Exception):
     """The bytes on the wire were not a well-formed DRINASD frame."""
 
 
-def _recv_exact(sock: socket.socket, n: int) -> bytes:
+def _recv_exact(sock: socket.socket, n: int, deadline: float | None = None) -> bytes:
+    """
+    Read exactly n bytes, or as many as arrive before the socket gives up.
+
+    `deadline` is a time.monotonic() instant that bounds the WHOLE read, and
+    it matters because sock.settimeout() does not. A socket timeout is per
+    recv call, so a peer that sends one byte just inside every timeout window
+    keeps this loop alive for as long as it likes -- and with MAX_PAYLOAD at
+    8 MB it can declare a length that makes "as long as it likes" mean hours.
+    Anything on the LAN can answer on port 5000 and claim to be a Drobo (see
+    the trust note at the top of discovery.py), and the agent runs this loop
+    while holding the process-wide discovery lock, so one such peer used to be
+    enough to wedge the device picker until the agent was restarted.
+
+    Left at None -- the default -- the read is unbounded exactly as it has
+    always been, so every caller that passes no deadline is unaffected.
+    """
     buf = b""
     while len(buf) < n:
+        if deadline is not None:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise FrameError(
+                    f"timed out reading frame: got {len(buf)} of {n} bytes")
+            # Shrink the per-recv wait as the budget runs down, or the very
+            # last recv could still overshoot by a full socket timeout.
+            sock.settimeout(left)
         chunk = sock.recv(min(65536, n - len(buf)))
         if not chunk:
             break
@@ -65,9 +90,15 @@ def _recv_exact(sock: socket.socket, n: int) -> bytes:
     return buf
 
 
-def read_frame(sock: socket.socket) -> bytes:
-    """Read one DRINASD frame and return its raw XML payload (NUL included)."""
-    head = _recv_exact(sock, HEADER_LEN)
+def read_frame(sock: socket.socket, deadline: float | None = None) -> bytes:
+    """
+    Read one DRINASD frame and return its raw XML payload (NUL included).
+
+    `deadline` (a time.monotonic() instant) bounds header and payload
+    together; see _recv_exact for why a socket timeout alone is not a bound.
+    Keyword-optional so existing callers keep working unchanged.
+    """
+    head = _recv_exact(sock, HEADER_LEN, deadline)
     if len(head) < HEADER_LEN:
         raise FrameError(f"short header: got {len(head)} of {HEADER_LEN} bytes")
     if head[:8] != SIGNATURE:
@@ -75,7 +106,7 @@ def read_frame(sock: socket.socket) -> bytes:
     length = struct.unpack(">I", head[12:16])[0]
     if length > MAX_PAYLOAD:
         raise FrameError(f"implausible payload length {length}")
-    payload = _recv_exact(sock, length)
+    payload = _recv_exact(sock, length, deadline)
     if len(payload) < length:
         raise FrameError(f"short payload: got {len(payload)} of {length} bytes")
     return payload
@@ -86,7 +117,14 @@ def fetch_greeting(host: str, port: int = DEFAULT_PORT, timeout: float = 8.0) ->
     sock = socket.create_connection((host, port), timeout=timeout)
     sock.settimeout(timeout)
     try:
-        return read_frame(sock)
+        # The clock starts once the connection is up, so `timeout` is the
+        # budget for the connect AND, separately, the budget for the read.
+        # Anchoring it before create_connection would quietly shorten the read
+        # on a slow-to-answer device, which is the opposite of the point: this
+        # is here to stop a hostile peer stalling, not to make a real Drobo on
+        # a busy network harder to find. A ~7 KB greeting inside 3-8 seconds
+        # is not a demanding ask of hardware that is actually there.
+        return read_frame(sock, deadline=time.monotonic() + timeout)
     finally:
         sock.close()
 
