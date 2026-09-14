@@ -12,6 +12,7 @@ import socket
 import struct
 import sys
 import threading
+import time
 
 sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
@@ -157,6 +158,33 @@ except esatm.FrameError:
     check("bad signature raises FrameError", True)
 finally:
     a.close()
+
+print("\n== a stalling peer cannot hold the read open for ever ==")
+# The header declares a 4 MB payload that never arrives. Before the deadline
+# there was only a PER-RECV timeout, so a peer that went quiet on a socket in
+# blocking mode -- or dribbled one byte inside every window -- held the reader
+# indefinitely, and the agent runs this while holding its process-wide
+# discovery lock. Anything on the LAN can answer on port 5000 and claim to be
+# a Drobo, so a peer that behaves badly on purpose is the realistic case.
+a, b = socket.socketpair()
+threading.Thread(
+    target=lambda: b.sendall(
+        esatm.SIGNATURE + b"\x01\x01\x00\x00" + struct.pack(">I", 4 * 1024 * 1024)),
+    daemon=True).start()
+_t0 = time.monotonic()
+try:
+    esatm.read_frame(a, deadline=time.monotonic() + 0.3)
+    check("a stalled read gives up", False)
+except (esatm.FrameError, OSError):
+    # FrameError once the budget is spent, or the socket timeout that the
+    # shrinking deadline puts on the last recv -- which one you get depends on
+    # the scheduler, so this asserts that it stopped, not how.
+    check("a stalled read gives up", True)
+finally:
+    _elapsed = time.monotonic() - _t0
+    a.close()
+    b.close()
+check("...and within its budget rather than for ever", _elapsed < 5.0, _elapsed)
 
 
 print("\n== volumes, read from the greeting at no extra cost ==")

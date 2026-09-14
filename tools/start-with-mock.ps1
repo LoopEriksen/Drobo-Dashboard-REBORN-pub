@@ -27,7 +27,10 @@
 #>
 param(
     [int]$Port = 7420,
-    [string]$Token = 'live-demo-token'
+    # Empty on purpose. The agent mints a random token on first run and saves
+    # it; this script reads that value back once the agent is up. A fixed
+    # default here would be a published credential -- see the note by $cfg.
+    [string]$Token = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,21 +72,52 @@ $app = & (Join-Path $PSScriptRoot 'find-app-exe.ps1') -Repo $repo
 
 # --- start the simulated agent ---------------------------------------------
 $cfg = Join-Path $repo 'agent\config.mock.json'
+
+# Retire the old fixed demo token if this machine still carries it. Earlier
+# versions of this script wrote a constant ('live-demo-token') into the config,
+# and because the script itself is public that constant was readable by anyone
+# -- which made it the same as no token at all. The agent's token is not a
+# per-endpoint thing: api.py hands the one value to the whole API, and that API
+# is not read-only (POST /api/backup/start runs robocopy, with /MIR when the
+# caller asks for mirroring, between paths the caller chooses). A page open in
+# the owner's browser could therefore drive it. The config is written once and
+# never refreshed, so a machine that got the burned value keeps it forever;
+# blank it here and let the agent generate a fresh random one. Only the token
+# field is touched, so anything else hand-edited in this file survives.
+if (Test-Path -LiteralPath $cfg) {
+    try {
+        $current = Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json
+        if ($current.agent.token -eq 'live-demo-token') {
+            Say 'Replacing the old published demo token with a fresh random one...' 'Yellow'
+            $current.agent.token = ''
+            # utf8 (with BOM, on 5.1) rather than ascii: config.py reads
+            # utf-8-sig, and rewriting someone's edited file must not mangle
+            # any non-ASCII path they put in it.
+            $current | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $cfg -Encoding utf8
+        }
+    }
+    catch {
+        # Unreadable, or not JSON any more. Leave it alone -- the agent
+        # reports a bad config far better than a half-repair here would.
+    }
+}
+
 if (-not (Test-Path -LiteralPath $cfg)) {
     # Synthesize it. config.*.json is gitignored (local configs carry real
     # tokens), which had a consequence nobody noticed until a public-release
     # review: a fresh clone had NO mock config, so the one launcher every
-    # hardware-less stranger tries died right here with "Missing ...". The
-    # simulator's config is entirely non-secret -- the token below is the
-    # documented demo value for a loopback-only fake device -- so writing it
-    # on demand costs nothing and makes a clean checkout actually work.
+    # hardware-less stranger tries died right here with "Missing ...". Writing
+    # it on demand costs nothing and makes a clean checkout actually work.
+    # The token stays EMPTY: config.py generates a random one on first load and
+    # saves it back, exactly as it does for the real config.json. Nothing that
+    # ships in a public file can serve as a credential.
     Say 'First run: creating agent\config.mock.json for the simulator...' 'DarkGray'
     @'
 {
   "agent": {
     "bind": "127.0.0.1",
     "port": 7420,
-    "token": "live-demo-token",
+    "token": "",
     "poll_seconds": 5
   },
   "drobo": {
@@ -132,12 +166,29 @@ if (-not $ready) {
 
 Say "Simulated Drobo is up on http://127.0.0.1:$Port" 'Green'
 Write-Host ''
-Say "Browser dashboard:  http://127.0.0.1:$Port/?token=$Token" 'Cyan'
-Say "Agent token:        $Token" 'Cyan'
-Write-Host ''
-Say 'Break things on purpose while it runs, from another terminal:'
-Say "  curl -X POST -H `"X-Agent-Token: $Token`" http://127.0.0.1:$Port/api/mock/fail/3" 'DarkGray'
-Say "  curl -X POST -H `"X-Agent-Token: $Token`" http://127.0.0.1:$Port/api/mock/reset" 'DarkGray'
+
+# Read the token the agent generated, now that it has answered /api/ping. It
+# has to be AFTER that: config.py writes the value during load(), so the file
+# read a moment earlier would still say "". This script no longer knows the
+# token in advance -- that is the point -- so the links below come from disk.
+if (-not $Token) {
+    try { $Token = (Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json).agent.token } catch { }
+}
+
+if ($Token) {
+    Say "Browser dashboard:  http://127.0.0.1:$Port/?token=$Token" 'Cyan'
+    Say "Agent token:        $Token" 'Cyan'
+    Write-Host ''
+    Say 'Break things on purpose while it runs, from another terminal:'
+    Say "  curl -X POST -H `"X-Agent-Token: $Token`" http://127.0.0.1:$Port/api/mock/fail/3" 'DarkGray'
+    Say "  curl -X POST -H `"X-Agent-Token: $Token`" http://127.0.0.1:$Port/api/mock/reset" 'DarkGray'
+}
+else {
+    # Better than printing "?token=" and letting you wonder why it 401s.
+    Say "Could not read the agent token from $cfg." 'Yellow'
+    Say 'Open that file, copy "token", and browse to:' 'Yellow'
+    Say "  http://127.0.0.1:$Port/?token=<token>" 'DarkGray'
+}
 Write-Host ''
 
 try {

@@ -68,6 +68,7 @@ from __future__ import annotations
 
 import json
 import queue
+import re
 import socket
 import secrets
 import threading
@@ -136,6 +137,11 @@ class _Handler(BaseHTTPRequestHandler):
     server_version = f"DroboAgent/{VERSION}"
     protocol_version = "HTTP/1.1"
 
+    # Socket timeout for one request. Without it, a client that sends a
+    # Content-Length and then stalls holds a handler thread for ever. Per
+    # recv/send call, not per request, so a slow phone upload is unaffected.
+    timeout = 60
+
     # /api/droboconfig opens a second connection to the device's command port.
     # Bounded so a slow or sulking Drobo can't stall an API worker thread.
     CONFIG_TIMEOUT = 8.0
@@ -172,10 +178,28 @@ class _Handler(BaseHTTPRequestHandler):
 
     # -- plumbing ----------------------------------------------------------
 
+    #: A token supplied in the URL, in any of the forms a request line can
+    #: carry one. Scrubbed before anything is printed: see log_message.
+    _TOKEN_IN_URL = re.compile(r"([?&]token=)[^&\s\"]*", re.I)
+
     def log_message(self, fmt: str, *args) -> None:  # quieter default logging
         if self.path.startswith("/api/events"):
             return
-        print(f"[api] {self.address_string()} {fmt % args}", flush=True)
+        # The access log prints the whole request line, query string included,
+        # and `?token=` is accepted on EVERY route (see _authorised), not only
+        # on /api/events -- the QR code from /api/pair.svg hands out exactly
+        # such a URL, and --open builds one too. So every dashboard open wrote
+        # the agent's access token into the console window that START DROBO
+        # DASHBOARD.bat deliberately keeps on screen after the agent stops.
+        # The startup line prints it once and scrolls away; this re-seeded the
+        # visible tail, which is the part people screenshot.
+        #
+        # Scrubbed here rather than by refusing ?token=, because a browser
+        # cannot set a header on an EventSource and the phone pairing flow
+        # depends on the URL form. The token still works; it just stops being
+        # written down.
+        line = self._TOKEN_IN_URL.sub(r"\1<redacted>", fmt % args)
+        print(f"[api] {self.address_string()} {line}", flush=True)
 
     def _authorised(self, params: dict) -> bool:
         supplied = self.headers.get("X-Agent-Token", "")
