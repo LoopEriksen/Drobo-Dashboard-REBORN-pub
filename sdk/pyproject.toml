@@ -29,7 +29,7 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Source = "https://github.com/LoopEriksen/Drobo-Dashboard-REBORN"
+Source = "https://github.com/LoopEriksen/Drobo-Dashboard-REBORN-pub"
 
 [tool.setuptools.packages.find]
 include = ["drobo_nasd*"]

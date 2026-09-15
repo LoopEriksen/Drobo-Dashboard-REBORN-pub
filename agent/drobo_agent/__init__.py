@@ -19,15 +19,21 @@ __version__ = "1.0.0"
 # about Drobos and nothing about applications, so it is useful to anyone with
 # this hardware, not just to this dashboard.
 #
-# Until it is pip-installed, make the sibling importable. Checked rather than
-# assumed, so a real installed copy always wins over the checkout.
+# The sdk/ that ships in this checkout always wins over anything installed in
+# the interpreter. This repo and its counterpart both publish a package named
+# `drobo_nasd`, and the two trees are not identical, so a single `pip install`
+# from either one would otherwise silently redirect this agent's imports into
+# the other repo's copy. Binding to the sibling sdk/ first keeps this checkout
+# running its own code and nothing else. Only fall back to an installed copy
+# when there is no sdk/ next to us (an unpacked release rather than a clone).
 import os as _os
 import sys as _sys
 
-try:  # already installed, or already on the path
+_sdk = _os.path.abspath(
+    _os.path.join(_os.path.dirname(__file__), "..", "..", "sdk"))
+if _os.path.isdir(_os.path.join(_sdk, "drobo_nasd")):
+    if _sdk in _sys.path:
+        _sys.path.remove(_sdk)
+    _sys.path.insert(0, _sdk)  # ahead of site-packages, not merely present
+else:  # no checkout beside us; an installed copy is the only option
     import drobo_nasd as _probe  # noqa: F401
-except ModuleNotFoundError:  # running from a checkout
-    _sdk = _os.path.abspath(
-        _os.path.join(_os.path.dirname(__file__), "..", "..", "sdk"))
-    if _os.path.isdir(_os.path.join(_sdk, "drobo_nasd")) and _sdk not in _sys.path:
-        _sys.path.insert(0, _sdk)
